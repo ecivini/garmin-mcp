@@ -39,6 +39,8 @@ For browser downloads, stream the original ZIP bytes with backpressure and an at
 
 ## Vercel release check
 
+The first deployment checkpoint serves the synthetic `list_activity_types` tool. Deploy the fixture to the canonical HTTPS hostname and configure the API and two OAuth registrations in [Security](security.md). In ChatGPT, confirm the workspace offers predefined OAuth credentials and use the callback shown by the connection. In Codex CLI, register the callback shown during OAuth setup. Sign in from both clients, discover the tool, and confirm that it returns the two fixture activity types. Record the protocol revision each client used and the audience, scope, and owner checks as pass or fail. Complete both client checks before enabling Garmin reads.
+
 1. Review the terms presented during Garmin Personal API key creation before testing with real account data. Specifically confirm the planned hosting and disclosure to ChatGPT and Codex. If the terms do not permit the use, keep verification on fixtures.
 2. Deploy to Vercel Hobby at the canonical HTTPS hostname. Check protected-resource discovery and both OAuth registrations with the actual Auth0 Free tenant. Exercise the negative authorization cases in [Security](security.md) before supplying real records to either client.
 3. In a regular ChatGPT conversation using the custom MCP connection, sign in as the owner, discover tools, run a Garmin read, run FIT analysis on a known activity, and open the ZIP link in a browser. Repeat from Codex CLI using its separately registered client. Check that a browser without a session receives a login prompt and an unapproved identity receives no ZIP.
