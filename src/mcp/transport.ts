@@ -1,6 +1,7 @@
 import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 import type { OwnerIdentity } from "../security/mcp-auth";
 import { getActivity, getActivityWorkouts, listActivityTypes, searchActivities } from "./activity-tools";
+import { downloadActivity } from "./archive-tools";
 import { healthTools } from "./health-tools";
 import { limitToolResult, unknownTool } from "./tools";
 import { trainingTools } from "./training-tools";
@@ -9,7 +10,7 @@ import { weightTools } from "./weight-tools";
 
 const tools = [
   listActivityTypes, getActivity, getActivityWorkouts, searchActivities,
-  ...trainingTools, ...healthTools, ...wellnessTools, ...weightTools,
+  ...trainingTools, ...healthTools, ...wellnessTools, ...weightTools, downloadActivity,
 ];
 const toolByName = new Map(tools.map((tool) => [tool.descriptor.name, tool]));
 

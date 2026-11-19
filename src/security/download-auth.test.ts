@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { GET as downloadRoute } from "../../app/downloads/activity/route";
+import { fixtureUpstream } from "../mcp/tool-test-fixtures";
 import { createDownloadActivityRoute, handleDownloadCallback, issueDownloadTicket } from "./download-auth";
 
 const origin = "https://garmin.example.test";
@@ -147,6 +149,26 @@ it("takes the owner through Auth0 and passes the exact activity ID to the archiv
   expect(readArchive).toHaveBeenCalledExactlyOnceWith({
     activityId, signal: incoming.signal, deadline: expect.any(Number),
   });
+});
+
+it("serves original ZIP bytes only after browser authorization on the deployed route", async () => {
+  const { url, session } = await signIn();
+  const zip = Buffer.from("504b0506" + "00".repeat(18), "hex");
+  const upstream = fixtureUpstream(new Response(zip));
+
+  const denied = await downloadRoute(new Request(url, {
+    headers: { Authorization: "Bearer no-browser-session" },
+  }));
+  expect(denied.status).toBe(303);
+  expect(upstream.paths()).toEqual([]);
+
+  const response = await downloadRoute(new Request(url, { headers: { Cookie: session } }));
+  expect(response.status).toBe(200);
+  expectPrivate(response);
+  expect(response.headers.get("content-type")).toBe("application/zip");
+  expect(response.headers.get("content-disposition")).toBe('attachment; filename="activity.zip"');
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(zip);
+  expect(upstream.paths()).toEqual([`/download-service/files/activity/${activityId}`]);
 });
 
 it("issues an opaque, replayable ten-minute ticket and refuses an expired ticket", async () => {

@@ -128,7 +128,7 @@ it.each([
   expect(ack.headers.has("Mcp-Session-Id")).toBe(false);
 
   const listed = await readRpc(await POST(post(rpc("tools/list", {}, 2), token, headers)));
-  expect(listed.result.tools).toHaveLength(27);
+  expect(listed.result.tools).toHaveLength(28);
   expect(listed.result.tools[0]).toMatchObject({
     name: "list_activity_types",
     inputSchema: { type: "object", additionalProperties: false },
@@ -157,6 +157,35 @@ function callActivityTypes(args: object, token?: string) {
 it("rejects unauthorized tool calls before reaching Garmin", async () => {
   expect((await callActivityTypes({})).status).toBe(401);
   expect(requests).not.toHaveBeenCalled();
+});
+
+it("issues an opaque owner download link without fetching Garmin", async () => {
+  vi.stubEnv("AUTH0_BROWSER_CLIENT_ID", "fixture-browser-client");
+  vi.stubEnv("AUTH0_BROWSER_CLIENT_SECRET", "fixture-browser-secret");
+  vi.stubEnv("DOWNLOAD_TICKET_KEY", Buffer.alloc(32, 7).toString("base64url"));
+  vi.stubEnv("DOWNLOAD_COOKIE_KEY", Buffer.alloc(32, 9).toString("base64url"));
+  const activityId = "9223372036854775807";
+  const headers = { "MCP-Protocol-Version": "2025-11-25" };
+  const call = (args: object) => POST(post(rpc("tools/call", {
+    name: "download_activity",
+    arguments: args,
+  }), tokens[0], headers));
+
+  const valid = await readRpc(await call({ activityId }));
+  const { url, expiresAt } = valid.result.structuredContent;
+  expect(valid.result.structuredContent).toEqual({ activityId, url, expiresAt });
+  const link = new URL(url);
+  expect(link.origin + link.pathname).toBe("https://garmin.example.test/downloads/activity");
+  expect(link.searchParams.get("ticket")).toBeTruthy();
+  expect(link.href).not.toContain(activityId);
+  expect(Date.parse(expiresAt) - Date.now()).toBeGreaterThan(9 * 60_000);
+  expect(Date.parse(expiresAt) - Date.now()).toBeLessThanOrEqual(10 * 60_000);
+
+  for (const invalid of [{ activityId: "9223372036854775808" }, { activityId, url: "https://elsewhere.example" }]) {
+    const denied = await readRpc(await call(invalid));
+    expect(denied.result).toMatchObject({ isError: true, structuredContent: { code: "invalid_input" } });
+  }
+  expect(requests.mock.calls.some(([url]) => String(url).startsWith(garminOrigin))).toBe(false);
 });
 
 it("rejects unknown tool arguments with a sanitized error before reaching Garmin", async () => {
