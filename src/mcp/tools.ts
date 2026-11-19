@@ -12,12 +12,14 @@ type ToolSpec<Input extends z.ZodObject> = {
   input: Input;
   output?: z.ZodObject;
   sizeHint?: string;
+  timeoutMs?: number;
   execute(input: z.output<Input>, context: ToolContext): Promise<Record<string, unknown>>;
 };
 
 export type RegisteredTool = {
   descriptor: Tool;
   sizeHint?: string;
+  timeoutMs: number;
   invoke(args: unknown, context: ToolContext): Promise<CallToolResult>;
 };
 
@@ -52,10 +54,11 @@ export function limitToolResult(result: CallToolResult, sizeHint?: string): Call
 }
 
 export function defineTool<Input extends z.ZodObject>({
-  name, title, description, input, output, execute, sizeHint,
+  name, title, description, input, output, execute, sizeHint, timeoutMs = 15_000,
 }: ToolSpec<Input>): RegisteredTool {
   return {
     sizeHint,
+    timeoutMs,
     descriptor: {
       name,
       title,

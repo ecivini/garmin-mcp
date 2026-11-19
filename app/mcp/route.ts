@@ -2,15 +2,16 @@ import { dispatchMcp } from "../../src/mcp/transport";
 import { authorizeMcpRequest } from "../../src/security/mcp-auth";
 
 export const runtime = "nodejs";
+export const maxDuration = 45;
 
 function handle(request: Request) {
-  const deadline = Date.now() + 15_000;
+  const startedAt = Date.now();
 
   return authorizeMcpRequest(request, (authorizedRequest, identity) => {
     if (authorizedRequest.method !== "POST") {
       return new Response(null, { status: 405, headers: { Allow: "POST" } });
     }
-    return dispatchMcp(authorizedRequest, identity, deadline);
+    return dispatchMcp(authorizedRequest, identity, startedAt);
   });
 }
 

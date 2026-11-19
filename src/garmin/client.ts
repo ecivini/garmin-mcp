@@ -50,6 +50,8 @@ const messages = {
   garmin_unavailable: "Garmin returned an unavailable or unexpected response.",
   timeout: "The Garmin request timed out or was cancelled.",
   payload_too_large: "The Garmin response exceeded its size limit.",
+  corrupt_archive: "The activity ZIP or FIT data could not be verified.",
+  unsupported_archive: "The archive does not contain a supported activity FIT file.",
 };
 
 export class GarminError extends Error {
