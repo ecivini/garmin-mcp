@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { exportJWK, generateKeyPair, SignJWT, type JWTPayload } from "jose";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { GET as downloadRoute } from "../../app/downloads/activity/route";
+import { POST as postMcp } from "../../app/mcp/route";
+import { zipArchive } from "../archive/zip-fixture";
 import { fixtureUpstream } from "../mcp/tool-test-fixtures";
 import { createDownloadActivityRoute, handleDownloadCallback, issueDownloadTicket } from "./download-auth";
 
@@ -169,6 +171,85 @@ it("serves original ZIP bytes only after browser authorization on the deployed r
   expect(response.headers.get("content-disposition")).toBe('attachment; filename="activity.zip"');
   expect(Buffer.from(await response.arrayBuffer())).toEqual(zip);
   expect(upstream.paths()).toEqual([`/download-service/files/activity/${activityId}`]);
+});
+
+it("keeps browser and MCP credentials separate and streams a ZIP above Vercel's buffered limit", async () => {
+  const logSpies = (["debug", "error", "info", "log", "warn"] as const)
+    .map((level) => vi.spyOn(console, level).mockImplementation(() => {}));
+  try {
+    const bearer = await new SignJWT({ azp: env.AUTH0_CHATGPT_CLIENT_ID, scope: "garmin:read" })
+      .setProtectedHeader({ alg: "RS256", kid: "fixture-key" })
+      .setIssuer(issuer)
+      .setSubject(subject)
+      .setAudience(env.MCP_RESOURCE_URL)
+      .setExpirationTime("5m")
+      .sign(signingKey);
+    const jwks = vi.fn(async () => Response.json({ keys: [publicJwk] }));
+    vi.stubGlobal("fetch", jwks);
+    function mcpRequest(headers: Record<string, string>) {
+      return new Request(env.MCP_RESOURCE_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json", accept: "application/json, text/event-stream",
+          "mcp-protocol-version": "2025-11-25", ...headers,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1, method: "tools/call",
+          params: { name: "download_activity", arguments: { activityId } },
+        }),
+      });
+    }
+    const authorization = `Bearer ${bearer}`;
+    const issued = await postMcp(mcpRequest({ authorization }));
+    expect(issued.status).toBe(200);
+    expect(issued.headers.get("cache-control")).toBe("private, no-store");
+    const wire = await issued.text();
+    const message = /^data: (.+)$/m.exec(wire)?.[1] ?? wire;
+    const { url: link } = JSON.parse(message).result.structuredContent;
+    expect(jwks).toHaveBeenCalledExactlyOnceWith(issuer + ".well-known/jwks.json", expect.anything());
+
+    const { url, session } = await signIn(link);
+    const fixture = zipArchive([{ name: "synthetic.bin", bytes: Buffer.alloc(5 * 1024 * 1024, 0x5a) }]);
+    const chunkSize = 64 * 1024;
+    let sent = 0;
+    const source = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const end = Math.min(sent + chunkSize, fixture.length);
+        controller.enqueue(new Uint8Array(fixture.subarray(sent, end)));
+        sent = end;
+        if (sent === fixture.length) controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const upstream = fixtureUpstream(new Response(source, {
+      headers: { "content-length": String(fixture.length), "content-type": "application/zip" },
+    }));
+
+    expect((await postMcp(mcpRequest({ cookie: session }))).status).toBe(401);
+    expect((await downloadRoute(new Request(url, { headers: { authorization } }))).status).toBe(303);
+    expect(upstream.paths()).toEqual([]);
+
+    const archive = await downloadRoute(new Request(url, { headers: { cookie: session } }));
+    expect(archive.status).toBe(200);
+    expectPrivate(archive);
+    expect(archive.headers.get("content-length")).toBeNull();
+    expect(sent).toBeLessThan(fixture.length);
+    const reader = archive.body!.getReader();
+    const hash = createHash("sha256");
+    let received = 0;
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      received += chunk.value.byteLength;
+      hash.update(chunk.value);
+    }
+    expect(received).toBe(fixture.length);
+    expect(received).toBeGreaterThan(4_500_000);
+    expect(hash.digest("hex")).toBe(createHash("sha256").update(fixture).digest("hex"));
+    expect(upstream.paths()).toEqual([`/download-service/files/activity/${activityId}`]);
+    for (const spy of logSpies) expect(spy).not.toHaveBeenCalled();
+  } finally {
+    for (const spy of logSpies) spy.mockRestore();
+  }
 });
 
 it("issues an opaque, replayable ten-minute ticket and refuses an expired ticket", async () => {

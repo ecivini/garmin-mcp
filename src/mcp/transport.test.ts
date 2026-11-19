@@ -12,6 +12,37 @@ const garminExchange = garminOrigin + "/personalapitoken-service/personal-api/pe
 const activityTypes = garminOrigin + "/activity-service/activity/activityTypes/simple";
 const garminKey = "fixture-personal-key";
 const privateUpstreamValue = "fixture-private-record";
+const expectedToolNames = [
+  "analyze_activity_fit",
+  "download_activity",
+  "get_activity",
+  "get_activity_workouts",
+  "get_body_battery_range",
+  "get_fitness_age",
+  "get_heart_rate_day",
+  "get_heart_rate_zones",
+  "get_hrv_day",
+  "get_hrv_range",
+  "get_hydration_range",
+  "get_menstrual_cycle_day",
+  "get_menstrual_cycle_summary",
+  "get_nutrition_day",
+  "get_profile_settings",
+  "get_sleep_day",
+  "get_sleep_range",
+  "get_spo2_day",
+  "get_steps_range",
+  "get_stress_range",
+  "get_vo2_max",
+  "get_weight_entries",
+  "get_weight_goals",
+  "get_weight_range",
+  "get_wellness_activities",
+  "get_wellness_day",
+  "get_wellness_range",
+  "list_activity_types",
+  "search_activities",
+];
 const expectedResult = {
   data: [
     { key: "fixture_activity", parent: null },
@@ -128,7 +159,7 @@ it.each([
   expect(ack.headers.has("Mcp-Session-Id")).toBe(false);
 
   const listed = await readRpc(await POST(post(rpc("tools/list", {}, 2), token, headers)));
-  expect(listed.result.tools).toHaveLength(29);
+  expect(listed.result.tools.map(({ name }: { name: string }) => name).sort()).toEqual(expectedToolNames);
   expect(listed.result.tools[0]).toMatchObject({
     name: "list_activity_types",
     inputSchema: { type: "object", additionalProperties: false },
