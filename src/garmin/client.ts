@@ -7,6 +7,11 @@ const jsonPaths = {
   get_activity: "/activity-service/activity/{activityId}",
   get_activity_workouts: "/activity-service/activity/{activityId}/workouts",
   search_activities: "/activitylist-service/activities/search/activities",
+  get_heart_rate_zones: "/biometric-service/heartRateZones/v2",
+  get_fitness_age: "/fitnessage-service/fitnessage/v2/{calendarDate}",
+  get_vo2_max: "/metrics-service/metrics/maxmet/daily/{startDate}/{endDate}",
+  get_hrv_day: "/hrv-service/hrv/{calendarDate}",
+  get_hrv_range: "/hrv-service/hrv/daily/{fromDate}/{toDate}",
 } as const;
 const maxJsonBytes = 2 * 1024 * 1024;
 const maxTokenBytes = 16 * 1024;
@@ -355,6 +360,8 @@ export function createGarminClient({
       const scope = openScope(context);
       try {
         const response = await get(path, scope, "application/json");
+        // Only the HRV operations document HTTP 204. A successful JSON null remains a JSON value.
+        if (response.status === 204 && (operation === "get_hrv_day" || operation === "get_hrv_range")) return undefined;
         if (response.status !== 200) {
           discard(response.body);
           throw new GarminError("garmin_unavailable");
