@@ -12,6 +12,12 @@ const jsonPaths = {
   get_vo2_max: "/metrics-service/metrics/maxmet/daily/{startDate}/{endDate}",
   get_hrv_day: "/hrv-service/hrv/{calendarDate}",
   get_hrv_range: "/hrv-service/hrv/daily/{fromDate}/{toDate}",
+  get_profile_settings: "/userprofile-service/userprofile/settings",
+  get_nutrition_day: "/nutrition-service/food/logs/{date}",
+  get_menstrual_cycle_summary: "/periodichealth-service/menstrualcycle/summary/{calendarDate}",
+  get_menstrual_cycle_day: "/periodichealth-service/menstrualcycle/dayview/{calendarDate}",
+  get_sleep_day: "/sleep-service/sleep/dailySleep",
+  get_sleep_range: "/sleep-service/sleep/dailySleepSummariesByDate",
 } as const;
 const maxJsonBytes = 2 * 1024 * 1024;
 const maxTokenBytes = 16 * 1024;
