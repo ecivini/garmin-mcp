@@ -27,6 +27,9 @@ const jsonPaths = {
   get_spo2_day: "/wellness-service/wellness/daily/spo2acclimation/{calendarDate}",
   get_heart_rate_day: "/wellness-service/wellness/dailyHeartRate",
   get_wellness_activities: "/wellnessactivity-service/activity/summary/range/{fromDate}/{untilDate}",
+  get_weight_goals: "/goal-service/goal/user/effective/weightgoal/{startDate}/{endDate}",
+  get_weight_entries: "/weight-service/weight/all/{startDate}/{endDate}",
+  get_weight_range: "/weight-service/weight/range/{startDate}/{endDate}",
 } as const;
 const maxJsonBytes = 2 * 1024 * 1024;
 const maxTokenBytes = 16 * 1024;

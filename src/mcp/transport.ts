@@ -5,8 +5,12 @@ import { healthTools } from "./health-tools";
 import { limitToolResult, unknownTool } from "./tools";
 import { trainingTools } from "./training-tools";
 import { wellnessTools } from "./wellness-tools";
+import { weightTools } from "./weight-tools";
 
-const tools = [listActivityTypes, getActivity, getActivityWorkouts, searchActivities, ...trainingTools, ...healthTools, ...wellnessTools];
+const tools = [
+  listActivityTypes, getActivity, getActivityWorkouts, searchActivities,
+  ...trainingTools, ...healthTools, ...wellnessTools, ...weightTools,
+];
 const toolByName = new Map(tools.map((tool) => [tool.descriptor.name, tool]));
 
 export function dispatchMcp(request: Request, identity: OwnerIdentity, deadline: number): Promise<Response> {
