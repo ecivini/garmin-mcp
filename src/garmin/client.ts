@@ -2,7 +2,12 @@ import { decodeJwt } from "jose";
 
 const base = "https://personal.connectapi.garmin.com";
 const exchangePath = "/personalapitoken-service/personal-api/personal-api-key/token";
-const jsonPaths = { list_activity_types: "/activity-service/activity/activityTypes/simple" } as const;
+const jsonPaths = {
+  list_activity_types: "/activity-service/activity/activityTypes/simple",
+  get_activity: "/activity-service/activity/{activityId}",
+  get_activity_workouts: "/activity-service/activity/{activityId}/workouts",
+  search_activities: "/activitylist-service/activities/search/activities",
+} as const;
 const maxJsonBytes = 2 * 1024 * 1024;
 const maxTokenBytes = 16 * 1024;
 const maxArchiveBytes = 100 * 1024 * 1024;
@@ -42,6 +47,26 @@ type ClientOptions = Readonly<{ apiKey?: () => string | undefined; fetch?: typeo
 type Token = Readonly<{ value: string; expiresAt: number }>;
 type Scope = ReturnType<typeof openScope>;
 type Exchange = { scope: Scope; waiters: number; promise: Promise<Token> };
+type QueryValue = string | number | boolean;
+type OperationParams = {
+  path?: Readonly<Record<string, string>>;
+  query?: Readonly<Record<string, QueryValue | readonly QueryValue[] | undefined>>;
+};
+
+function jsonOperationPath(operation: keyof typeof jsonPaths, params?: OperationParams): string {
+  if (!Object.hasOwn(jsonPaths, operation)) throw new GarminError("invalid_input");
+  const path = jsonPaths[operation].replace(/\{(\w+)\}/g, (_, name: string) => {
+    const value = params?.path?.[name];
+    if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) throw new GarminError("invalid_input");
+    return value;
+  });
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params?.query ?? {})) {
+    if (value === undefined) continue;
+    for (const item of Array.isArray(value) ? value : [value]) query.append(key, String(item));
+  }
+  return query.size ? `${path}?${query}` : path;
+}
 
 function openScope({ signal: caller, deadline }: GarminRequestContext) {
   const controller = new AbortController();
@@ -325,11 +350,11 @@ export function createGarminClient({
   }
 
   return {
-    async readJson(operation: keyof typeof jsonPaths, context: GarminRequestContext): Promise<unknown> {
-      if (!Object.hasOwn(jsonPaths, operation)) throw new GarminError("invalid_input");
+    async readJson(operation: keyof typeof jsonPaths, context: GarminRequestContext, params?: OperationParams): Promise<unknown> {
+      const path = jsonOperationPath(operation, params);
       const scope = openScope(context);
       try {
-        const response = await get(jsonPaths[operation], scope, "application/json");
+        const response = await get(path, scope, "application/json");
         if (response.status !== 200) {
           discard(response.body);
           throw new GarminError("garmin_unavailable");

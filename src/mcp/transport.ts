@@ -1,9 +1,9 @@
 import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 import type { OwnerIdentity } from "../security/mcp-auth";
-import { listActivityTypes } from "./activity-tools";
+import { getActivity, getActivityWorkouts, listActivityTypes, searchActivities } from "./activity-tools";
 import { limitToolResult, unknownTool } from "./tools";
 
-const tools = [listActivityTypes];
+const tools = [listActivityTypes, getActivity, getActivityWorkouts, searchActivities];
 const toolByName = new Map(tools.map((tool) => [tool.descriptor.name, tool]));
 
 export function dispatchMcp(request: Request, identity: OwnerIdentity, deadline: number): Promise<Response> {
