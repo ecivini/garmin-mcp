@@ -39,6 +39,17 @@ Respond with 401 and a Bearer discovery challenge for missing or invalid authent
 
 The download tool returns a same-origin URL such as `/downloads/activity?ticket=<opaque-ticket>`. The ticket is authenticated and encrypted with a dedicated server secret and contains the exact activity ID, permitted issuer and subject, purpose, and expiry. Give it a ten-minute lifetime. Treat it as replayable during that window by the same authenticated owner. A browser without a session goes through Auth0 Universal Login with state, nonce and PKCE. Keep the pending ticket in an encrypted, short-lived, host-only transaction cookie through the redirect and use a fixed same-origin return route. Keep the ticket out of Auth0 redirect parameters. Verify the OIDC callback and use a short-lived, encrypted, host-only session cookie with `Secure`, `HttpOnly`, and `SameSite=Lax`. Recheck the session subject against the allowlist, verify the ticket and bind it to that subject before fetching Garmin. An expired link requires a fresh tool call.
 
+Register a separate Auth0 Regular Web Application with `client_secret_post`, authorization code with PKCE, and the exact HTTPS callback `https://<canonical-host>/downloads/activity/callback`. Use the same issuer configured for MCP and enable the owner connection for this application. The browser requests the `openid` scope and uses a 15-minute session, bounded by the ID token's expiry. [Auth0 PKCE for web applications](https://auth0.com/blog/pkce-in-web-applications-with-spring-security/)
+
+| Variable | Value |
+| --- | --- |
+| `AUTH0_BROWSER_CLIENT_ID` | Client ID of the confidential browser application. |
+| `AUTH0_BROWSER_CLIENT_SECRET` | Client secret of that application. |
+| `DOWNLOAD_TICKET_KEY` | 32 random bytes encoded as unpadded base64url for download tickets. |
+| `DOWNLOAD_COOKIE_KEY` | A separate 32 random bytes encoded as unpadded base64url for browser cookies. |
+
+Set the secret and both keys directly in Vercel's sensitive environment settings. Verify the browser flow with a fixture ticket before using any Garmin archive.
+
 Send the ZIP as an attachment with a server-chosen generic filename, `Cache-Control: private, no-store`, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`. Apply no-store and no-referrer to the login and download flow too. Keep the MCP bearer token out of browser URLs and cookies.
 
 ## Data handling and authorization tests
