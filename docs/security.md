@@ -14,6 +14,17 @@ Publish `GET /.well-known/oauth-protected-resource/mcp` with the canonical MCP U
 
 Keep public sign-ups disabled on the Auth0 database connection. Manually provision the owner's account and enable only that connection for the three applications. Keep an explicit server-side allowlist of issuer and subject pairs controlled by the Garmin account owner. Start with one pair. Use stable Auth0 subject IDs and keep email addresses out of authorization decisions. Any test user with a valid tenant login must remain outside the allowlist. [Auth0 Disable Sign Ups](https://support.auth0.com/center/s/article/Disable-Signups-at-Connection-Level) · [Codex MCP setup](https://learn.chatgpt.com/docs/extend/mcp)
 
+Configure these server-side environment variables for MCP authorization and discovery.
+
+| Variable | Value |
+| --- | --- |
+| `MCP_RESOURCE_URL` | Canonical HTTPS MCP endpoint ending in `/mcp`, matching the Auth0 API identifier. |
+| `AUTH0_ISSUER` | Exact HTTPS issuer from Auth0 discovery, with its trailing slash. |
+| `AUTH0_CHATGPT_CLIENT_ID` | Pre-registered ChatGPT application client ID. |
+| `AUTH0_CODEX_CLIENT_ID` | Separate pre-registered Codex CLI application client ID. |
+| `AUTH0_OWNER_SUBJECT` | Stable Auth0 `sub` of the owner under the configured issuer. |
+| `MCP_TRUSTED_ORIGINS` | Optional comma-separated HTTPS origins, using scheme and host with an optional port. An empty value permits only origin-less requests. |
+
 ## Authorization on every MCP request
 
 Authenticate before handing the request to the SDK, including for `initialize`, `tools/list`, `tools/call`, and HTTP method handling. Use the standard Auth0 access-token profile and require all of the following.
