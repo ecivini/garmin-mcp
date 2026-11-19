@@ -1,57 +1,28 @@
-import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
-import { z } from "zod";
+import { createMcpHandler, Server } from "@modelcontextprotocol/server";
 import type { OwnerIdentity } from "../security/mcp-auth";
+import { listActivityTypes } from "./activity-tools";
+import { limitToolResult, unknownTool } from "./tools";
 
-type ToolContext = Readonly<{
-  identity: OwnerIdentity;
-  signal: AbortSignal;
-  deadline: number;
-}>;
-
-const activityTypesOutput = z.strictObject({
-  data: z.array(z.strictObject({
-    key: z.string(),
-    parent: z.string().nullable(),
-  })),
-  units: z.strictObject({}),
-});
-
-function listActivityTypes({ signal }: ToolContext): z.infer<typeof activityTypesOutput> {
-  signal.throwIfAborted();
-  return {
-    data: [
-      { key: "fixture_activity", parent: null },
-      { key: "fixture_activity_variant", parent: "fixture_activity" },
-    ],
-    units: {},
-  };
-}
+const tools = [listActivityTypes];
+const toolByName = new Map(tools.map((tool) => [tool.descriptor.name, tool]));
 
 export function dispatchMcp(request: Request, identity: OwnerIdentity, deadline: number): Promise<Response> {
   const handler = createMcpHandler(() => {
-    const server = new McpServer({ name: "garmin-mcp", version: "0.1.0" });
+    const server = new Server({ name: "garmin-mcp", version: "0.1.0" }, { capabilities: { tools: {} } });
 
-    server.registerTool("list_activity_types", {
-      title: "List activity types",
-      description: "Return synthetic activity types for the OAuth connection check.",
-      inputSchema: z.strictObject({}),
-      outputSchema: activityTypesOutput,
-      annotations: {
-        readOnlyHint: true,
-        openWorldHint: false,
-      },
-    }, (_args, { mcpReq }) => {
+    server.setRequestHandler("tools/list", () => ({ tools: tools.map((tool) => tool.descriptor) }));
+    server.setRequestHandler("tools/call", async ({ params }, { mcpReq }) => {
+      const tool = toolByName.get(params.name);
+      if (!tool) return unknownTool();
+
       const remaining = deadline - Date.now();
       const deadlineSignal = remaining > 0 ? AbortSignal.timeout(remaining) : AbortSignal.abort();
-      const result = listActivityTypes({
+      const result = await tool.invoke(params.arguments, {
         identity,
         deadline,
         signal: AbortSignal.any([request.signal, mcpReq.signal, deadlineSignal]),
       });
-      return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
-        structuredContent: result,
-      };
+      return limitToolResult(server.projectCallToolResult(result, tool.descriptor.outputSchema), tool.sizeHint);
     });
 
     return server;

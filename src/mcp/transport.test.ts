@@ -7,6 +7,11 @@ const issuer = "https://auth.example.test/";
 const subject = "auth0|fixture-owner";
 const clients = ["chatgpt-fixture", "codex-fixture"];
 const maxBodyBytes = 64 * 1024;
+const garminOrigin = "https://personal.connectapi.garmin.com";
+const garminExchange = garminOrigin + "/personalapitoken-service/personal-api/personal-api-key/token";
+const activityTypes = garminOrigin + "/activity-service/activity/activityTypes/simple";
+const garminKey = "fixture-personal-key";
+const privateUpstreamValue = "fixture-private-record";
 const expectedResult = {
   data: [
     { key: "fixture_activity", parent: null },
@@ -16,6 +21,9 @@ const expectedResult = {
 };
 let publicKey: object;
 let tokens: string[];
+let garminToken: string;
+let upstream: ReturnType<typeof vi.fn<() => Response>>;
+let requests: ReturnType<typeof vi.fn<typeof fetch>>;
 
 beforeAll(async () => {
   const pair = await generateKeyPair("RS256", { extractable: true });
@@ -29,6 +37,7 @@ beforeAll(async () => {
       .setExpirationTime("5m")
       .sign(pair.privateKey),
   ));
+  garminToken = await new SignJWT({}).setProtectedHeader({ alg: "RS256" }).setExpirationTime("1h").sign(pair.privateKey);
 });
 
 beforeEach(() => {
@@ -38,7 +47,27 @@ beforeEach(() => {
   vi.stubEnv("AUTH0_CODEX_CLIENT_ID", clients[1]);
   vi.stubEnv("AUTH0_OWNER_SUBJECT", subject);
   vi.stubEnv("MCP_TRUSTED_ORIGINS", "");
-  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ keys: [publicKey] })));
+  vi.stubEnv("GARMIN_PERSONAL_API_KEY", garminKey);
+  upstream = vi.fn(() => Response.json([
+    { ...expectedResult.data[1], userProfileId: privateUpstreamValue },
+    { ...expectedResult.data[0], privateNotes: privateUpstreamValue },
+  ]));
+  requests = vi.fn(async (input, init) => {
+    const url = String(input);
+    if (url === issuer + ".well-known/jwks.json") return Response.json({ keys: [publicKey] });
+    if (url === garminExchange) {
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("Authorization")).toBe(`ApiKey ${garminKey}`);
+      return new Response(garminToken);
+    }
+    if (url === activityTypes) {
+      expect(init?.method).toBe("GET");
+      expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${garminToken}`);
+      return upstream();
+    }
+    throw new Error("Unexpected fixture request");
+  });
+  vi.stubGlobal("fetch", requests);
 });
 
 afterEach(() => {
@@ -76,7 +105,7 @@ it.each([
   ["2025-03-26", 0],
   ["2025-06-18", 1],
   ["2025-11-25", 0],
-] as const)("negotiates %s and serves the fixture without a session", async (version, client) => {
+] as const)("negotiates %s and calls the Garmin activity-types operation without a session", async (version, client) => {
   const token = tokens[client];
   const initialized = await POST(post(rpc("initialize", {
     protocolVersion: version,
@@ -105,6 +134,8 @@ it.each([
     inputSchema: { type: "object", additionalProperties: false },
     annotations: { readOnlyHint: true },
   });
+  expect(upstream).not.toHaveBeenCalled();
+  expect(requests.mock.calls.some(([url]) => String(url).startsWith(garminOrigin))).toBe(false);
 
   const called = await readRpc(await POST(post(rpc("tools/call", {
     name: "list_activity_types",
@@ -113,6 +144,42 @@ it.each([
   expect(called.result.isError).not.toBe(true);
   expect(called.result.structuredContent).toEqual(expectedResult);
   expect(JSON.parse(called.result.content[0].text)).toEqual(expectedResult);
+  expect(JSON.stringify(called)).not.toContain(privateUpstreamValue);
+  expect(upstream).toHaveBeenCalledOnce();
+});
+
+function callActivityTypes(args: object, token?: string) {
+  return POST(post(rpc("tools/call", { name: "list_activity_types", arguments: args }), token, {
+    "MCP-Protocol-Version": "2025-11-25",
+  }));
+}
+
+it("rejects unauthorized tool calls before reaching Garmin", async () => {
+  expect((await callActivityTypes({})).status).toBe(401);
+  expect(requests).not.toHaveBeenCalled();
+});
+
+it("rejects unknown tool arguments with a sanitized error before reaching Garmin", async () => {
+  const result = await readRpc(await callActivityTypes({ [privateUpstreamValue]: true }, tokens[0]));
+  expect(result.result).toMatchObject({ isError: true, structuredContent: { code: "invalid_input" } });
+  expect(JSON.stringify(result)).not.toContain(privateUpstreamValue);
+  expect(requests.mock.calls.some(([url]) => String(url).startsWith(garminOrigin))).toBe(false);
+});
+
+it("sanitizes upstream HTTP and malformed response failures", async () => {
+  upstream.mockReturnValueOnce(new Response(privateUpstreamValue, { status: 502 }));
+  upstream.mockReturnValueOnce(Response.json([{ key: false, parent: privateUpstreamValue }]));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await readRpc(await callActivityTypes({}, tokens[0]));
+    expect(result.result).toMatchObject({ isError: true, structuredContent: { code: "garmin_unavailable" } });
+    expect(JSON.stringify(result)).not.toContain(privateUpstreamValue);
+  }
+});
+
+it("limits the serialized result including both structured and text copies", async () => {
+  upstream.mockReturnValueOnce(Response.json([{ key: "x".repeat(70 * 1024), parent: null }]));
+  const result = await readRpc(await callActivityTypes({}, tokens[0]));
+  expect(result.result).toMatchObject({ isError: true, structuredContent: { code: "payload_too_large" } });
 });
 
 it("applies a 64 KiB POST limit with or without a declared size", async () => {

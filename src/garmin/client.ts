@@ -14,7 +14,7 @@ const maxTokenAgeMs = 24 * 60 * 60 * 1000;
 const maxCooldownMs = 5_000;
 
 const messages = {
-  invalid_input: "Garmin did not accept the supplied arguments.",
+  invalid_input: "The supplied arguments are invalid.",
   not_found: "The requested Garmin record was not found.",
   rate_limited: "Garmin is rate limiting requests.",
   garmin_auth_failed: "Garmin credentials could not be accepted.",
