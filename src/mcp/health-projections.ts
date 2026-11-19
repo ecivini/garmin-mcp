@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { optionalFlag as flag, optionalNumber as number, optionalText as text, responseId } from "./garmin-schemas";
+import { connectDateTime, optionalFlag as flag, optionalNumber as number, optionalText as text, responseId } from "./garmin-schemas";
 
 const format = z.object({
   formatId: number, formatKey: text, minFraction: number, maxFraction: number, groupingUsed: flag, displayFormat: text,
@@ -61,7 +61,6 @@ export const nutritionUnits = {
   vitaminA: "µg", vitaminC: "mg", vitaminD: "µg",
 };
 
-const connectDateTime = z.object({ date: text, localDate: text }).nullish();
 const cycleAnalysis = z.object({
   perimenopauseDetected: flag,
   cycleTypeAnalysis: z.object({

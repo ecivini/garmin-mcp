@@ -18,6 +18,15 @@ const jsonPaths = {
   get_menstrual_cycle_day: "/periodichealth-service/menstrualcycle/dayview/{calendarDate}",
   get_sleep_day: "/sleep-service/sleep/dailySleep",
   get_sleep_range: "/sleep-service/sleep/dailySleepSummariesByDate",
+  get_hydration_range: "/usersummary-service/stats/hydration/daily/{startDate}/{endDate}",
+  get_steps_range: "/usersummary-service/stats/steps/daily/{startDate}/{endDate}",
+  get_stress_range: "/usersummary-service/stats/stress/daily/{startDate}/{endDate}",
+  get_wellness_day: "/usersummary-service/usersummary/daily",
+  get_wellness_range: "/usersummary-service/v2/dailysummaries",
+  get_body_battery_range: "/wellness-service/wellness/bodyBattery/reports/daily",
+  get_spo2_day: "/wellness-service/wellness/daily/spo2acclimation/{calendarDate}",
+  get_heart_rate_day: "/wellness-service/wellness/dailyHeartRate",
+  get_wellness_activities: "/wellnessactivity-service/activity/summary/range/{fromDate}/{untilDate}",
 } as const;
 const maxJsonBytes = 2 * 1024 * 1024;
 const maxTokenBytes = 16 * 1024;

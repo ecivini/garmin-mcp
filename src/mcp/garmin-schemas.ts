@@ -16,6 +16,7 @@ export function withinInclusiveDays(start: string, end: string, limit: number): 
 export const optionalNumber = z.number().nullish();
 export const optionalText = z.string().nullish();
 export const optionalFlag = z.boolean().nullish();
+export const connectDateTime = z.object({ date: optionalText, localDate: optionalText }).nullish();
 
 export function project<Schema extends z.ZodType>(schema: Schema, data: unknown): z.output<Schema> {
   const result = schema.safeParse(data);

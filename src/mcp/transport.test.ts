@@ -128,7 +128,7 @@ it.each([
   expect(ack.headers.has("Mcp-Session-Id")).toBe(false);
 
   const listed = await readRpc(await POST(post(rpc("tools/list", {}, 2), token, headers)));
-  expect(listed.result.tools).toHaveLength(15);
+  expect(listed.result.tools).toHaveLength(24);
   expect(listed.result.tools[0]).toMatchObject({
     name: "list_activity_types",
     inputSchema: { type: "object", additionalProperties: false },
