@@ -1,5 +1,7 @@
 # Garmin MCP release verification
 
+Follow the [setup guide](setup.md) for Auth0 registrations, Vercel variables, and client connections.
+
 ## Recorded checks
 
 | Check | Result |

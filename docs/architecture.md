@@ -1,5 +1,7 @@
 # Garmin Personal MCP architecture
 
+See the [step-by-step setup guide](setup.md) to configure and connect a deployment.
+
 ## Deployment and request flow
 
 Run a TypeScript Next.js App Router app on Vercel Hobby using the Node.js runtime. The official TypeScript MCP SDK serves stateless Streamable HTTP on one canonical HTTPS URL, such as `https://garmin.example.com/mcp`. ChatGPT custom MCP and Codex CLI share that URL. Pin the SDK version during implementation and test protocol negotiation with both clients. The transport uses request-local state, with no session IDs, server-initiated events, or event replay. Support Streamable HTTP POST responses and return 405 for a standalone GET event stream or DELETE after applying the endpoint's authorization checks. [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) · [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) · [Vercel Hobby](https://vercel.com/docs/plans/hobby)

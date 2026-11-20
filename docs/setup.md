@@ -1,0 +1,112 @@
+# Set up Garmin Personal MCP
+
+This guide connects a single Garmin account to Codex CLI and ChatGPT through an Auth0-protected Next.js deployment on Vercel. You need a Vercel project for this repository, an Auth0 tenant, Codex CLI, and a ChatGPT workspace that lets you add a custom MCP server with your own OAuth client credentials. Use Node.js 22.12 or later in the 22.x series for local checks.
+
+Replace `garmin.example.com` with your stable Vercel production hostname and `YOUR_AUTH0_DOMAIN` with your Auth0 tenant domain wherever they appear.
+
+## 1. Choose the hostname and register the API
+
+1. In Vercel, import the repository as a Next.js project and choose the production hostname. The MCP URL in this guide is `https://garmin.example.com/mcp`.
+2. In Auth0, go to **Applications → APIs → Create API**. Name it **Garmin MCP** and set the **Identifier** to the exact MCP URL, including `/mcp` and without a trailing slash. Select **RS256** and use the **Auth0** access-token profile, which supplies the `azp` claim. Under **Permissions**, add `garmin:read`. [Auth0 token profiles](https://auth0.com/blog/jwt-access-tokens-profiles-now-in-ga/)
+3. In Auth0 tenant **Settings → Advanced → Settings**, enable **Resource Parameter Compatibility Profile**. This lets Auth0 use the OAuth `resource` parameter to select the API. [Auth0 resource compatibility](https://support.auth0.com/center/s/article/mcp-audience-error-with-auth0)
+
+## 2. Set up the owner and the three Auth0 applications
+
+1. Under **Authentication → Database**, choose the connection for the owner's account and enable **Disable Sign Ups**. Create the owner in **User Management → Users** if needed. Open the user profile and copy the full **User ID**, including its prefix, for `AUTH0_OWNER_SUBJECT`. Use this same account for all three sign-ins. [Auth0 database connections](https://dev.auth0.com/docs/connections/database)
+2. Under **Applications → Applications → Create Application**, create the following registrations in the same tenant.
+
+   | Application | Type and OAuth settings | Allowed Callback URLs |
+   | --- | --- | --- |
+   | **Garmin Codex CLI** | **Native**, Authorization Code with PKCE, token endpoint authentication **None**. | Copy the exact callback from Codex in step 4. |
+   | **Garmin ChatGPT** | **Regular Web Application** if ChatGPT asks for a Client ID and secret. If ChatGPT explicitly offers authentication **None**, use **Native**. Match the token endpoint authentication method on both sides. | Copy the exact redirect URI from ChatGPT in step 5. |
+   | **Garmin Browser Downloads** | **Regular Web Application**, Authorization Code with PKCE, token endpoint authentication `client_secret_post`. | `https://garmin.example.com/downloads/activity/callback` |
+
+3. Open each application's **Connections** tab and enable only the database connection that contains the owner. You can also enable the app from **Authentication → Database → your connection → Applications**. [Auth0 connection settings](https://support.auth0.com/center/s/article/Error-Connection-must-be-enabled-for-this-client-to-perform-single-user-creation-and-signup-operations)
+4. Under **Applications → APIs → Garmin MCP → Settings → Application Access Policy**, set **User-Delegated Access** to **Per-app authorization**. In the API's **Application Access** tab, edit **Garmin Codex CLI** and **Garmin ChatGPT** individually and grant each **User-Delegated Access** to `garmin:read`. The browser app uses the `openid` scope for sign-in and needs no Garmin API grant. [Auth0 application access policies](https://auth0.com/blog/developers-guide-api-access-policies-auth0/#setting-policies-and-grants-with-the-auth0-dashboard)
+
+## 3. Set the Vercel variables and deploy
+
+1. Open `https://YOUR_AUTH0_DOMAIN/.well-known/openid-configuration`. Copy the JSON `issuer` exactly, including its trailing slash.
+2. Run this command locally to generate two independent 32-byte keys. Copy only the value after `=` for each variable.
+
+   ```sh
+   node -e 'const { randomBytes } = require("node:crypto"); for (const name of ["DOWNLOAD_TICKET_KEY", "DOWNLOAD_COOKIE_KEY"]) console.log(`${name}=${randomBytes(32).toString("base64url")}`)'
+   ```
+
+3. In the Vercel project, add the following under **Settings → Environment Variables** for **Production**. Mark the browser client secret, both encryption keys, and the Garmin key as **Sensitive**. Enter any ChatGPT client secret directly in ChatGPT's connection form.
+
+   | Variable | Value |
+   | --- | --- |
+   | `MCP_RESOURCE_URL` | `https://garmin.example.com/mcp`, the same URL used as the Auth0 API Identifier. |
+   | `AUTH0_ISSUER` | Exact Auth0 `issuer` from discovery. |
+   | `AUTH0_OWNER_SUBJECT` | Full Auth0 User ID of the owner. |
+   | `AUTH0_CODEX_CLIENT_ID` | Client ID of **Garmin Codex CLI**. |
+   | `AUTH0_CHATGPT_CLIENT_ID` | Client ID of **Garmin ChatGPT**. |
+   | `AUTH0_BROWSER_CLIENT_ID` | Client ID of **Garmin Browser Downloads**. |
+   | `AUTH0_BROWSER_CLIENT_SECRET` | Client secret of **Garmin Browser Downloads**. |
+   | `DOWNLOAD_TICKET_KEY` | Unpadded base64url key generated for tickets. |
+   | `DOWNLOAD_COOKIE_KEY` | The separate unpadded base64url key generated for cookies. |
+   | `GARMIN_PERSONAL_API_KEY` | Add when you are ready for live Garmin reads in step 6. |
+   | `MCP_TRUSTED_ORIGINS` | Optional comma-separated list of exact HTTPS origins. Leave empty for clients that send no `Origin` header. |
+
+4. Deploy the branch or commit that contains the full catalog to the production hostname. Vercel applies updated environment variables on a new deployment. If a push creates a Preview at another hostname, the existing MCP connections still reach the production URL. [Vercel environment variables](https://vercel.com/docs/environment-variables)
+5. Check the deployment:
+
+   ```sh
+   curl -fsS https://garmin.example.com/healthz
+   curl -fsS https://garmin.example.com/.well-known/oauth-protected-resource/mcp
+   ```
+
+   The first command should return `{"status":"ok"}`. The second should list the MCP URL as `resource`, the exact Auth0 issuer in `authorization_servers`, and `garmin:read` in `scopes_supported`. A request to `/mcp` without a bearer token should receive HTTP 401 with a Bearer discovery challenge.
+
+## 4. Connect Codex CLI
+
+1. Add the server using the **Garmin Codex CLI** Client ID.
+
+   ```sh
+   codex mcp add garmin \
+     --url 'https://garmin.example.com/mcp' \
+     --oauth-client-id 'YOUR_CODEX_CLIENT_ID'
+   ```
+
+2. Copy the callback URL Codex displays into **Garmin Codex CLI → Settings → Allowed Callback URLs** in Auth0 and save. If Codex displays only the authorization URL, use its decoded `redirect_uri` value. Match the scheme, host, path, callback suffix if any, and port used by the login attempt.
+3. If the loopback port changes on each attempt, add these entries to the existing `[mcp_servers.garmin.oauth]` table in `~/.codex/config.toml`, keeping its `client_id`. Use the same port in the URL and listener, then register the exact resulting URL in Auth0. Preserve any callback suffix Codex requires.
+
+   ```toml
+   callback_url = "http://127.0.0.1:36877/callback"
+   callback_port = 36877
+   ```
+
+4. Run `codex mcp login garmin --scopes garmin:read` and sign in as the owner. Open a fresh `codex` session and use `/mcp` to verify that `garmin` lists the 29 tools in the [tool catalog](tool-catalog.md). [Codex MCP and callback settings](https://learn.chatgpt.com/docs/extend/mcp#oauth-client-registration-and-callbacks)
+
+## 5. Connect ChatGPT
+
+1. In ChatGPT on the web, go to **Plugins → + → Add custom MCP server** and enter `https://garmin.example.com/mcp`. Choose OAuth and **Use your own OAuth client credentials**. Enter the **Garmin ChatGPT** Client ID and its secret if the chosen method requires one. Leave the registration URL empty for a predefined client. [ChatGPT custom MCP connections](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt)
+2. If ChatGPT asks for manual OAuth settings, copy the endpoints from your tenant's discovery response. For a standard Auth0 tenant they are:
+
+   | Field | Value |
+   | --- | --- |
+   | Authorization URL | `https://YOUR_AUTH0_DOMAIN/authorize` |
+   | Token URL | `https://YOUR_AUTH0_DOMAIN/oauth/token` |
+   | Discovery URL, if requested | `https://YOUR_AUTH0_DOMAIN/.well-known/oauth-authorization-server` |
+   | Scope, if requested | `garmin:read` |
+
+3. Copy the redirect URI shown by ChatGPT into **Garmin ChatGPT → Settings → Allowed Callback URLs** in Auth0 and save. Complete the connection and sign in as the owner. Open a new conversation, select the plugin, and confirm that the connection lists all 29 tools. After future tool changes, open the connection, select **Refresh**, and start a new conversation. [ChatGPT OAuth callbacks](https://developers.openai.com/plugins/build/auth#redirect-url) · [Refreshing tools](https://developers.openai.com/plugins/deploy/connect-chatgpt#refresh-metadata)
+
+## 6. Enable live Garmin reads and verify a download
+
+1. Verify the hosted browser flow with a synthetic ZIP before enabling live reads. Use the fixture deployment described in the [release checklist](release-checks.md#deployment-checks). On the full deployment, discovery and issuing a download link can work before the Garmin key is set. Live reads and ZIP delivery need the key.
+2. Review the terms shown during Personal API key creation and the FIT SDK license for your intended hosting and use. Generate a Personal API key in Garmin Connect, add it to Vercel as `GARMIN_PERSONAL_API_KEY`, and redeploy. Keep the key in Vercel's server-side settings. [Garmin Personal API key setup](https://developer.garmin.com/gc-developer-program/personal/personal-faq) · [FIT SDK license](https://github.com/garmin/fit-javascript-sdk/blob/main/LICENSE.txt)
+3. In each client, ask it to call `list_activity_types` and show the result.
+4. Choose a known activity and call `download_activity` with its decimal activity ID as a string. Open the link within ten minutes. If your browser has no current session, sign in to Auth0 as the owner. The browser should save `activity.zip`. Compare its byte count and SHA-256 with a direct Garmin download of the same activity. Call `analyze_activity_fit` for the same ID to verify the FIT summary. [Browser download security](security.md#browser-zip-access)
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| **Callback URL mismatch** | Compare the current request's decoded `redirect_uri` with the **Allowed Callback URLs** on the Auth0 app used by that client. If Codex changes ports, use the fixed-port setup in step 4. |
+| **Client is not authorized to access resource server** or **insufficient scope** | Check that the failing app has **User-Delegated Access** to `garmin:read`, and that the API Identifier exactly matches the MCP URL. In Codex, retry with `--scopes garmin:read`. |
+| **ChatGPT cannot discover OAuth** | Check the protected-resource JSON in step 3. In ChatGPT, select the predefined client option and enter the tenant's authorization and token URLs manually if prompted. |
+| **Auth0 login succeeds but the connection still fails** | Check **Auth0 → Monitoring → Logs** for a failed code exchange. Verify the Client ID, secret, and token endpoint authentication method for that app. If the exchange succeeded, check the next `POST /mcp` status in Vercel and confirm the production Client ID and owner User ID. |
+| **Only the synthetic tool appears** | Confirm the full catalog is deployed on the hostname used by the clients. Start a fresh Codex session or refresh the ChatGPT connection. |
+| **Browser download link expired** | Call `download_activity` again for a new ten-minute link. |
