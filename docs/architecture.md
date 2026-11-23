@@ -41,8 +41,6 @@ For browser downloads, stream the original ZIP bytes with backpressure and an at
 
 ## Vercel release check
 
-Deploy the synthetic `list_activity_types` fixture and verify OAuth discovery and sign-in from each configured client before enabling Garmin reads. Follow the client-specific registrations in [Security](security.md) and record results using the [release checklist](release-checks.md).
-
 See [Release verification](release-checks.md) for the current results, deployment checks, and rollback procedure.
 
 1. Review the terms presented during Garmin Personal API key creation before testing with real account data. Confirm the planned hosting and disclosure to each client. If the terms do not permit the use, keep verification on fixtures.

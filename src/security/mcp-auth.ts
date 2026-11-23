@@ -21,6 +21,7 @@ const mcpClientSettings = [
   "AUTH0_CODEX_CLIENT_ID",
   "AUTH0_CLAUDE_CLIENT_ID",
   "AUTH0_CLAUDE_CODE_CLIENT_ID",
+  "AUTH0_GEMINI_CLIENT_ID",
 ];
 
 function requiredSetting(env: Environment, name: string): string {

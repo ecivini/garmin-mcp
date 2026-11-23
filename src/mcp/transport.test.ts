@@ -5,7 +5,7 @@ import { DELETE, GET, POST } from "../../app/mcp/route";
 const resource = "https://garmin.example.test/mcp";
 const issuer = "https://auth.example.test/";
 const subject = "auth0|fixture-owner";
-const clients = ["chatgpt-fixture", "codex-fixture", "claude-fixture", "claude-code-fixture"];
+const clients = ["chatgpt-fixture", "codex-fixture", "claude-fixture", "claude-code-fixture", "gemini-fixture"];
 const maxBodyBytes = 64 * 1024;
 const garminOrigin = "https://personal.connectapi.garmin.com";
 const garminExchange = garminOrigin + "/personalapitoken-service/personal-api/personal-api-key/token";
@@ -78,6 +78,7 @@ beforeEach(() => {
   vi.stubEnv("AUTH0_CODEX_CLIENT_ID", clients[1]);
   vi.stubEnv("AUTH0_CLAUDE_CLIENT_ID", clients[2]);
   vi.stubEnv("AUTH0_CLAUDE_CODE_CLIENT_ID", clients[3]);
+  vi.stubEnv("AUTH0_GEMINI_CLIENT_ID", clients[4]);
   vi.stubEnv("AUTH0_OWNER_SUBJECT", subject);
   vi.stubEnv("MCP_TRUSTED_ORIGINS", "");
   vi.stubEnv("GARMIN_PERSONAL_API_KEY", garminKey);
@@ -135,14 +136,26 @@ async function readRpc(response: Response) {
 }
 
 it.each([
-  ["2025-03-26", 0],
-  ["2025-06-18", 1],
-  ["2025-11-25", 0],
-  ["2025-11-25", 2],
-  ["2025-11-25", 3],
-] as const)("negotiates %s and calls activity types without a session for client %i", async (version, client) => {
+  { version: "2025-03-26", client: 0, name: "ChatGPT" },
+  { version: "2025-06-18", client: 1, name: "Codex CLI" },
+  { version: "2025-11-25", client: 0, name: "ChatGPT" },
+  { version: "2025-11-25", client: 2, name: "Claude" },
+  { version: "2025-11-25", client: 3, name: "Claude Code" },
+  { version: "2025-11-25", client: 4, name: "Gemini alongside the other clients" },
+  { version: "2025-11-25", client: 4, name: "Gemini alone", geminiOnly: true },
+])("negotiates $version and calls activity types without a session for $name", async ({ version, client, geminiOnly }) => {
+  let handlePost = POST;
+  if (geminiOnly) {
+    for (const setting of [
+      "AUTH0_CHATGPT_CLIENT_ID", "AUTH0_CODEX_CLIENT_ID", "AUTH0_CLAUDE_CLIENT_ID", "AUTH0_CLAUDE_CODE_CLIENT_ID",
+    ]) vi.stubEnv(setting, undefined);
+    // Load a fresh route because the authorization module caches its configuration on first use.
+    vi.resetModules();
+    handlePost = (await import("../../app/mcp/route")).POST;
+  }
+
   const token = tokens[client];
-  const initialized = await POST(post(rpc("initialize", {
+  const initialized = await handlePost(post(rpc("initialize", {
     protocolVersion: version,
     capabilities: {},
     clientInfo: { name: "fixture-client", version: "1.0.0" },
@@ -155,14 +168,14 @@ it.each([
   });
 
   const headers = { "MCP-Protocol-Version": version };
-  const ack = await POST(post(JSON.stringify({
+  const ack = await handlePost(post(JSON.stringify({
     jsonrpc: "2.0",
     method: "notifications/initialized",
   }), token, headers));
   expect(ack.status).toBe(202);
   expect(ack.headers.has("Mcp-Session-Id")).toBe(false);
 
-  const listed = await readRpc(await POST(post(rpc("tools/list", {}, 2), token, headers)));
+  const listed = await readRpc(await handlePost(post(rpc("tools/list", {}, 2), token, headers)));
   expect(listed.result.tools.map(({ name }: { name: string }) => name).sort()).toEqual(expectedToolNames);
   expect(listed.result.tools[0]).toMatchObject({
     name: "list_activity_types",
@@ -172,7 +185,7 @@ it.each([
   expect(upstream).not.toHaveBeenCalled();
   expect(requests.mock.calls.some(([url]) => String(url).startsWith(garminOrigin))).toBe(false);
 
-  const called = await readRpc(await POST(post(rpc("tools/call", {
+  const called = await readRpc(await handlePost(post(rpc("tools/call", {
     name: "list_activity_types",
     arguments: {},
   }, 3), token, headers)));
