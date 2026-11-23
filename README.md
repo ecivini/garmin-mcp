@@ -1,6 +1,6 @@
 # Garmin Personal MCP
 
-Make sense of your Garmin Connect data in ChatGPT or Codex. Ask for a weekly view of your health and training, explore a specific activity, or turn your observations into Markdown notes for your second brain.
+Make sense of your Garmin Connect data in Claude, Claude Code, ChatGPT, or Codex CLI. Ask for a weekly view of your health and training, explore a specific activity, or turn your observations into Markdown notes for your second brain.
 
 Garmin Personal MCP is a read-only [Model Context Protocol](https://modelcontextprotocol.io/) server for one Garmin account. It uses Garmin's official Personal API to fetch data on demand. The 29 tools cover activities and workouts, sleep, heart rate and HRV, stress, Body Battery, steps, SpO₂, hydration, nutrition, weight, and menstrual-cycle tracking. The catalog also includes FIT activity summaries and original ZIP downloads. [Tool catalog](docs/tool-catalog.md)
 
@@ -57,8 +57,8 @@ Record missing readings and add context such as travel, changes in routine, or h
 
 ## Get started
 
-1. Choose a stable HTTPS hostname and configure an Auth0 API with separate OAuth clients for ChatGPT, Codex CLI, and browser downloads.
-2. Set the server environment on Vercel, deploy the Next.js app, and connect ChatGPT and Codex CLI to the same HTTPS `/mcp` endpoint.
+1. Choose a stable HTTPS hostname and configure an Auth0 API with one OAuth app per MCP client you want to use. Register a separate app for browser downloads.
+2. Set the server environment on Vercel, deploy the Next.js app, and connect your chosen clients to the same HTTPS `/mcp` endpoint.
 3. Call `list_activity_types` from each client to check the connection. For ZIP delivery, call `download_activity` and open the short-lived link in your browser.
 
 Follow the [step-by-step setup guide](docs/setup.md) for the exact settings, callbacks, and commands.

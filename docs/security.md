@@ -2,7 +2,7 @@
 
 ## Auth0 and discovery
 
-Use an Auth0 Free tenant for authorization code with PKCE (`S256`). Pre-register separate Auth0 applications for ChatGPT and Codex CLI. Configure the API identifier and required JWT audience to the exact canonical HTTPS MCP URL, including `/mcp` and with no trailing slash. Define and issue the single delegated API scope `garmin:read`. Enable the Auth0 Resource Parameter Compatibility Profile so the clients' OAuth `resource` parameter targets that audience. Verify issuance with both clients on the actual tenant before release. [Auth0 resource configuration](https://support.auth0.com/center/s/article/mcp-audience-error-with-auth0)
+Use an Auth0 Free tenant for authorization code with PKCE (`S256`). Pre-register a separate Auth0 application for each MCP client you configure. Configure the API identifier and required JWT audience to the exact canonical HTTPS MCP URL, including `/mcp` and with no trailing slash. Define and issue the single delegated API scope `garmin:read`. Enable the Auth0 Resource Parameter Compatibility Profile so the clients' OAuth `resource` parameter targets that audience. Verify issuance for each configured client on the actual tenant before release. [Auth0 resource configuration](https://support.auth0.com/center/s/article/mcp-audience-error-with-auth0)
 
 Publish `GET /.well-known/oauth-protected-resource/mcp` with the canonical MCP URL as `resource`, the pinned Auth0 issuer in `authorization_servers`, and `garmin:read` in `scopes_supported`. Serve the same public metadata at the root well-known location for clients that try it. Point the Bearer challenge at the path-specific metadata URL and include the required scope. Auth0 provides issuer discovery, authorization, token exchange and JWKS. Verify its metadata advertises `S256` and that the resource is carried through authorization and token exchange. [MCP authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization) · [OpenAI MCP authentication](https://developers.openai.com/plugins/build/auth)
 
@@ -10,9 +10,11 @@ Publish `GET /.well-known/oauth-protected-resource/mcp` with the canonical MCP U
 | --- | --- |
 | ChatGPT custom MCP connection | Use the predefined OAuth client option, with the exact redirect URI shown by ChatGPT for that connection and the matching token endpoint authentication method. Keep any confidential client secret in Auth0 and the client connection configuration. Verify that the target account and workspace allow predefined client credentials for a custom connection in regular chats. Treat a missing option as a compatibility blocker for this design. |
 | Codex CLI | Register a public native application with PKCE. Add it with `codex mcp add garmin --url https://garmin.example.com/mcp --oauth-client-id <id>`. Register the exact callback displayed by Codex, including its callback ID if present. If the provider requires a fixed port, align the registered URI, configured callback URL and listener port. Use `codex mcp login garmin` to sign in again. |
+| Claude custom connector | Use a pre-registered public client with PKCE and the exact `https://claude.ai/api/mcp/auth_callback` callback. |
+| Claude Code direct connection | Use a separate public native app with PKCE and the fixed loopback callback described in the [setup guide](setup.md#direct-connection-in-claude-code). |
 | Browser downloads | Register a separate confidential web application for the server's same-origin login callback. Enable only the owner connection. Its ID token establishes the browser session after the server verifies the OIDC callback. |
 
-Keep public sign-ups disabled on the Auth0 database connection. Manually provision the owner's account and enable only that connection for the three applications. Keep an explicit server-side allowlist of issuer and subject pairs controlled by the Garmin account owner. Start with one pair. Use stable Auth0 subject IDs and keep email addresses out of authorization decisions. Any test user with a valid tenant login must remain outside the allowlist. [Auth0 Disable Sign Ups](https://support.auth0.com/center/s/article/Disable-Signups-at-Connection-Level) · [Codex MCP setup](https://learn.chatgpt.com/docs/extend/mcp)
+Keep public sign-ups disabled on the Auth0 database connection. Manually provision the owner's account and enable only that connection for the registered applications. Keep an explicit server-side allowlist of issuer and subject pairs controlled by the Garmin account owner. Start with one pair. Use stable Auth0 subject IDs and keep email addresses out of authorization decisions. Any test user with a valid tenant login must remain outside the allowlist. [Auth0 Disable Sign Ups](https://support.auth0.com/center/s/article/Disable-Signups-at-Connection-Level) · [Claude OAuth requirements](https://claude.com/docs/connectors/building/authentication)
 
 Configure these server-side environment variables for MCP authorization and discovery.
 
@@ -22,15 +24,19 @@ Configure these server-side environment variables for MCP authorization and disc
 | `AUTH0_ISSUER` | Exact HTTPS issuer from Auth0 discovery, with its trailing slash. |
 | `AUTH0_CHATGPT_CLIENT_ID` | Pre-registered ChatGPT application client ID. |
 | `AUTH0_CODEX_CLIENT_ID` | Separate pre-registered Codex CLI application client ID. |
+| `AUTH0_CLAUDE_CLIENT_ID` | Pre-registered Claude application client ID. |
+| `AUTH0_CLAUDE_CODE_CLIENT_ID` | Separate pre-registered Claude Code application client ID. |
 | `AUTH0_OWNER_SUBJECT` | Stable Auth0 `sub` of the owner under the configured issuer. |
 | `MCP_TRUSTED_ORIGINS` | Optional comma-separated HTTPS origins, using scheme and host with an optional port. An empty value permits only origin-less requests. |
+
+Set at least one MCP client ID. Unset or empty values disable that client. Configured IDs must be distinct from each other and from `AUTH0_BROWSER_CLIENT_ID`.
 
 ## Authorization on every MCP request
 
 Authenticate before handing the request to the SDK, including for `initialize`, `tools/list`, `tools/call`, and HTTP method handling. Use the standard Auth0 access-token profile and require all of the following.
 
 - A bearer JWT signed with RS256 using the pinned tenant's JWKS, exact issuer, canonical MCP URL in `aud`, required unexpired `exp`, and a valid `nbf` if present.
-- An `azp` claim matching the pre-registered ChatGPT or Codex client ID. Interpret it as the OAuth authorized party. Accept user delegation only and exclude machine-to-machine grants, tokens for the browser client, and OIDC ID tokens.
+- An `azp` claim matching a configured MCP client ID. Interpret it as the OAuth authorized party. Accept user delegation only and exclude machine-to-machine grants, tokens for the browser client, and OIDC ID tokens.
 - The exact `garmin:read` token in the space-delimited `scope` claim, plus the issuer and `sub` pair in the owner allowlist.
 
 Respond with 401 and a Bearer discovery challenge for missing or invalid authentication. Return 403 with an `insufficient_scope` challenge for a valid token missing the scope, and a generic 403 for a disallowed client or subject. Validate any supplied HTTP `Origin` against the configured trusted origins, and accept origin-less requests from the supported non-browser transports. Keep Garmin credentials entirely server-side. [Auth0 audience and authorized party](https://support.auth0.com/center/s/article/value-of-the-audience-attribute-in-access-token-requests-and-its-significance) · [MCP transport security](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)

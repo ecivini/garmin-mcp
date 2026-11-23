@@ -11,13 +11,23 @@ const issuer = "https://auth.example.test/";
 const origin = "https://trusted.example.test";
 const owner = "auth0|fixture-owner";
 const metadataUrl = "https://garmin.example.test/.well-known/oauth-protected-resource/mcp";
+const claudeClient = "claude-fixture";
+const claudeCodeClient = "claude-code-fixture";
 const env = {
   MCP_RESOURCE_URL: resource,
   AUTH0_ISSUER: issuer,
   AUTH0_CHATGPT_CLIENT_ID: "chatgpt-fixture",
   AUTH0_CODEX_CLIENT_ID: "codex-fixture",
+  AUTH0_BROWSER_CLIENT_ID: "browser-fixture",
   AUTH0_OWNER_SUBJECT: owner,
   MCP_TRUSTED_ORIGINS: origin,
+};
+const claudeOnlyEnv = {
+  ...env,
+  AUTH0_CHATGPT_CLIENT_ID: undefined,
+  AUTH0_CODEX_CLIENT_ID: "",
+  AUTH0_CLAUDE_CLIENT_ID: claudeClient,
+  AUTH0_CLAUDE_CODE_CLIENT_ID: claudeCodeClient,
 };
 const claims: JWTPayload = {
   iss: issuer,
@@ -68,10 +78,10 @@ function request(method: string, bearer?: string, suppliedOrigin?: string) {
   });
 }
 
-function fixtureGate() {
+function fixtureGate(settings: Parameters<typeof readMcpAuthConfig>[0] = env) {
   const fetch = vi.fn(async () => Response.json({ keys: [publicJwk] }));
   vi.stubGlobal("fetch", fetch);
-  return { fetch, authorize: createMcpAuthorization(readMcpAuthConfig(env)) };
+  return { fetch, authorize: createMcpAuthorization(readMcpAuthConfig(settings)) };
 }
 
 describe("MCP authorization", () => {
@@ -91,6 +101,13 @@ describe("MCP authorization", () => {
     );
   });
 
+  it.each([claudeClient, claudeCodeClient])("dispatches for %s in a Claude-only deployment", async (client) => {
+    const { authorize } = fixtureGate(claudeOnlyEnv);
+    const incoming = request("tools/list", await token({ azp: client }));
+    expect((await authorize(incoming, dispatch)).status).toBe(204);
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith(incoming, { issuer, subject: owner });
+  });
+
   it.each([
     { name: "missing bearer", issue: async () => undefined, status: 401 },
     { name: "malformed bearer", issue: async () => "malformed", status: 401 },
@@ -104,7 +121,9 @@ describe("MCP authorization", () => {
     { name: "ID token", issue: () => token({ aud: env.AUTH0_CHATGPT_CLIENT_ID, azp: undefined, scope: undefined }), status: 401 },
     { name: "missing subject", issue: () => token({ sub: undefined }), status: 401 },
     { name: "unapproved subject", issue: () => token({ sub: "auth0|fixture-other" }), status: 403 },
-    { name: "browser client", issue: () => token({ azp: "browser-fixture" }), status: 403 },
+    { name: "browser client", issue: () => token({ azp: env.AUTH0_BROWSER_CLIENT_ID }), status: 403 },
+    { name: "unconfigured Claude client", issue: () => token({ azp: claudeClient }), status: 403 },
+    { name: "unknown client", issue: () => token({ azp: "unknown-fixture" }), status: 403 },
     { name: "missing client", issue: () => token({ azp: undefined }), status: 403 },
     { name: "machine grant", issue: () => token({ gty: "client-credentials" }), status: 403 },
     { name: "machine subject", issue: () => token({ sub: "chatgpt-fixture@clients" }), status: 403 },
@@ -153,7 +172,7 @@ describe("MCP authorization routes", () => {
   });
 
   it("serves both public metadata paths and authenticates every App Router method", async () => {
-    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    for (const [key, value] of Object.entries(claudeOnlyEnv)) vi.stubEnv(key, value);
     const expected = {
       resource,
       authorization_servers: [issuer],
@@ -176,6 +195,11 @@ describe("MCP authorization routes", () => {
 });
 
 describe("MCP authorization configuration", () => {
+  it("allows one configured MCP client", () => {
+    expect(readMcpAuthConfig({ ...claudeOnlyEnv, AUTH0_CLAUDE_CODE_CLIENT_ID: "" }).clients)
+      .toEqual([claudeClient]);
+  });
+
   it.each([
     { MCP_RESOURCE_URL: `${resource}/` },
     { MCP_RESOURCE_URL: "http://garmin.example.test/mcp" },
@@ -183,6 +207,11 @@ describe("MCP authorization configuration", () => {
     { AUTH0_ISSUER: `${issuer}wrong/` },
     { AUTH0_ISSUER: "https://someone@auth.example.test/" },
     { AUTH0_CODEX_CLIENT_ID: env.AUTH0_CHATGPT_CLIENT_ID },
+    { AUTH0_CLAUDE_CLIENT_ID: env.AUTH0_CHATGPT_CLIENT_ID },
+    { AUTH0_CLAUDE_CODE_CLIENT_ID: env.AUTH0_BROWSER_CLIENT_ID },
+    { AUTH0_CLAUDE_CLIENT_ID: " " },
+    { AUTH0_CLAUDE_CODE_CLIENT_ID: "client with spaces" },
+    { AUTH0_CHATGPT_CLIENT_ID: "", AUTH0_CODEX_CLIENT_ID: undefined },
     { AUTH0_OWNER_SUBJECT: "fixture-machine@clients" },
     { MCP_TRUSTED_ORIGINS: "*" },
   ])("rejects misconfiguration %j", (overrides) => {

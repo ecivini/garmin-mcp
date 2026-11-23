@@ -37,7 +37,7 @@ function readBrowserConfig() {
   const mcp = readMcpAuthConfig();
   const clientId = process.env.AUTH0_BROWSER_CLIENT_ID;
   const clientSecret = process.env.AUTH0_BROWSER_CLIENT_SECRET;
-  if (!clientId || !clientSecret || /\s/.test(clientId) || mcp.clients.includes(clientId)) {
+  if (!clientId || !clientSecret || /\s/.test(clientId)) {
     throw new Error("Invalid browser client configuration");
   }
   const ticketKey = encryptionKey("DOWNLOAD_TICKET_KEY");

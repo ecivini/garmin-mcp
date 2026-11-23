@@ -16,6 +16,12 @@ type Environment = Readonly<Record<string, string | undefined>>;
 const requiredScope = "garmin:read";
 const metadataPath = "/.well-known/oauth-protected-resource/mcp";
 const privateHeaders = { "Cache-Control": "private, no-store" };
+const mcpClientSettings = [
+  "AUTH0_CHATGPT_CLIENT_ID",
+  "AUTH0_CODEX_CLIENT_ID",
+  "AUTH0_CLAUDE_CLIENT_ID",
+  "AUTH0_CLAUDE_CODE_CLIENT_ID",
+];
 
 function requiredSetting(env: Environment, name: string): string {
   const value = env[name];
@@ -36,11 +42,12 @@ function requireHttpsUrl(value: string, path: string): string {
 export function readMcpAuthConfig(env: Environment = process.env): McpAuthConfig {
   const resource = requireHttpsUrl(requiredSetting(env, "MCP_RESOURCE_URL"), "/mcp");
   const issuer = requireHttpsUrl(requiredSetting(env, "AUTH0_ISSUER"), "/");
-  const chatgptClient = requiredSetting(env, "AUTH0_CHATGPT_CLIENT_ID");
-  const codexClient = requiredSetting(env, "AUTH0_CODEX_CLIENT_ID");
+  const clients = mcpClientSettings.filter((name) => env[name]).map((name) => requiredSetting(env, name));
   const ownerSubject = requiredSetting(env, "AUTH0_OWNER_SUBJECT");
 
-  if (chatgptClient === codexClient || ownerSubject.endsWith("@clients")) {
+  const browserClient = env.AUTH0_BROWSER_CLIENT_ID;
+  if (clients.length === 0 || new Set(clients).size !== clients.length ||
+      (browserClient && clients.includes(browserClient)) || ownerSubject.endsWith("@clients")) {
     throw new Error("Invalid MCP identity configuration");
   }
 
@@ -48,7 +55,7 @@ export function readMcpAuthConfig(env: Environment = process.env): McpAuthConfig
     ? env.MCP_TRUSTED_ORIGINS.split(",").map((origin) => requireHttpsUrl(origin.trim(), ""))
     : [];
 
-  return { resource, issuer, clients: [chatgptClient, codexClient], ownerSubject, trustedOrigins };
+  return { resource, issuer, clients, ownerSubject, trustedOrigins };
 }
 
 export function createMcpAuthorization(config: McpAuthConfig) {

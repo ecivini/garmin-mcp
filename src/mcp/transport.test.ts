@@ -5,7 +5,7 @@ import { DELETE, GET, POST } from "../../app/mcp/route";
 const resource = "https://garmin.example.test/mcp";
 const issuer = "https://auth.example.test/";
 const subject = "auth0|fixture-owner";
-const clients = ["chatgpt-fixture", "codex-fixture"];
+const clients = ["chatgpt-fixture", "codex-fixture", "claude-fixture", "claude-code-fixture"];
 const maxBodyBytes = 64 * 1024;
 const garminOrigin = "https://personal.connectapi.garmin.com";
 const garminExchange = garminOrigin + "/personalapitoken-service/personal-api/personal-api-key/token";
@@ -76,6 +76,8 @@ beforeEach(() => {
   vi.stubEnv("AUTH0_ISSUER", issuer);
   vi.stubEnv("AUTH0_CHATGPT_CLIENT_ID", clients[0]);
   vi.stubEnv("AUTH0_CODEX_CLIENT_ID", clients[1]);
+  vi.stubEnv("AUTH0_CLAUDE_CLIENT_ID", clients[2]);
+  vi.stubEnv("AUTH0_CLAUDE_CODE_CLIENT_ID", clients[3]);
   vi.stubEnv("AUTH0_OWNER_SUBJECT", subject);
   vi.stubEnv("MCP_TRUSTED_ORIGINS", "");
   vi.stubEnv("GARMIN_PERSONAL_API_KEY", garminKey);
@@ -136,7 +138,9 @@ it.each([
   ["2025-03-26", 0],
   ["2025-06-18", 1],
   ["2025-11-25", 0],
-] as const)("negotiates %s and calls the Garmin activity-types operation without a session", async (version, client) => {
+  ["2025-11-25", 2],
+  ["2025-11-25", 3],
+] as const)("negotiates %s and calls activity types without a session for client %i", async (version, client) => {
   const token = tokens[client];
   const initialized = await POST(post(rpc("initialize", {
     protocolVersion: version,
@@ -172,6 +176,39 @@ it.each([
     name: "list_activity_types",
     arguments: {},
   }, 3), token, headers)));
+  expect(called.result.isError).not.toBe(true);
+  expect(called.result.structuredContent).toEqual(expectedResult);
+  expect(JSON.parse(called.result.content[0].text)).toEqual(expectedResult);
+  expect(JSON.stringify(called)).not.toContain(privateUpstreamValue);
+  expect(upstream).toHaveBeenCalledOnce();
+});
+
+it("discovers and calls tools over MCP 2026-07-28 for Claude Code", async () => {
+  const version = "2026-07-28";
+  const name = "list_activity_types";
+  // Mirror the per-request metadata and routing headers required by Streamable HTTP.
+  // https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#standard-request-headers
+  const metadata = {
+    "io.modelcontextprotocol/protocolVersion": version,
+    "io.modelcontextprotocol/clientInfo": { name: "claude-code-fixture", version: "1.0.0" },
+    "io.modelcontextprotocol/clientCapabilities": {},
+  };
+  const send = (method: string, params: object = {}, headers?: Record<string, string>) => POST(post(
+    rpc(method, { ...params, _meta: metadata }), tokens[3],
+    { "MCP-Protocol-Version": version, "Mcp-Method": method, ...headers },
+  ));
+
+  const discovered = await readRpc(await send("server/discover"));
+  expect(discovered.result).toMatchObject({
+    supportedVersions: expect.arrayContaining([version]),
+    capabilities: { tools: {} },
+    _meta: { "io.modelcontextprotocol/serverInfo": { name: "garmin-mcp" } },
+  });
+  const listed = await readRpc(await send("tools/list"));
+  expect(listed.result.tools.map(({ name }: { name: string }) => name).sort()).toEqual(expectedToolNames);
+  expect(requests.mock.calls.some(([url]) => String(url).startsWith(garminOrigin))).toBe(false);
+
+  const called = await readRpc(await send("tools/call", { name, arguments: {} }, { "Mcp-Name": name }));
   expect(called.result.isError).not.toBe(true);
   expect(called.result.structuredContent).toEqual(expectedResult);
   expect(JSON.parse(called.result.content[0].text)).toEqual(expectedResult);
