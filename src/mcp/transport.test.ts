@@ -5,7 +5,15 @@ import { DELETE, GET, POST } from "../../app/mcp/route";
 const resource = "https://garmin.example.test/mcp";
 const issuer = "https://auth.example.test/";
 const subject = "auth0|fixture-owner";
-const clients = ["chatgpt-fixture", "codex-fixture", "claude-fixture", "claude-code-fixture", "gemini-fixture"];
+const clientSettings = {
+  AUTH0_CHATGPT_CLIENT_ID: "chatgpt-fixture",
+  AUTH0_CODEX_CLIENT_ID: "codex-fixture",
+  AUTH0_CLAUDE_CLIENT_ID: "claude-fixture",
+  AUTH0_CLAUDE_CODE_CLIENT_ID: "claude-code-fixture",
+  AUTH0_GEMINI_CLIENT_ID: "gemini-fixture",
+  AUTH0_OPENCODE_CLIENT_ID: "opencode-fixture",
+};
+const clients = Object.values(clientSettings);
 const maxBodyBytes = 64 * 1024;
 const garminOrigin = "https://personal.connectapi.garmin.com";
 const garminExchange = garminOrigin + "/personalapitoken-service/personal-api/personal-api-key/token";
@@ -74,11 +82,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.stubEnv("MCP_RESOURCE_URL", resource);
   vi.stubEnv("AUTH0_ISSUER", issuer);
-  vi.stubEnv("AUTH0_CHATGPT_CLIENT_ID", clients[0]);
-  vi.stubEnv("AUTH0_CODEX_CLIENT_ID", clients[1]);
-  vi.stubEnv("AUTH0_CLAUDE_CLIENT_ID", clients[2]);
-  vi.stubEnv("AUTH0_CLAUDE_CODE_CLIENT_ID", clients[3]);
-  vi.stubEnv("AUTH0_GEMINI_CLIENT_ID", clients[4]);
+  for (const [setting, id] of Object.entries(clientSettings)) vi.stubEnv(setting, id);
   vi.stubEnv("AUTH0_OWNER_SUBJECT", subject);
   vi.stubEnv("MCP_TRUSTED_ORIGINS", "");
   vi.stubEnv("GARMIN_PERSONAL_API_KEY", garminKey);
@@ -142,13 +146,15 @@ it.each([
   { version: "2025-11-25", client: 2, name: "Claude" },
   { version: "2025-11-25", client: 3, name: "Claude Code" },
   { version: "2025-11-25", client: 4, name: "Gemini alongside the other clients" },
-  { version: "2025-11-25", client: 4, name: "Gemini alone", geminiOnly: true },
-])("negotiates $version and calls activity types without a session for $name", async ({ version, client, geminiOnly }) => {
+  { version: "2025-11-25", client: 4, name: "Gemini alone", only: "AUTH0_GEMINI_CLIENT_ID" },
+  { version: "2025-11-25", client: 5, name: "OpenCode alongside the other clients" },
+  { version: "2025-11-25", client: 5, name: "OpenCode alone", only: "AUTH0_OPENCODE_CLIENT_ID" },
+])("negotiates $version and calls activity types without a session for $name", async ({ version, client, only }) => {
   let handlePost = POST;
-  if (geminiOnly) {
-    for (const setting of [
-      "AUTH0_CHATGPT_CLIENT_ID", "AUTH0_CODEX_CLIENT_ID", "AUTH0_CLAUDE_CLIENT_ID", "AUTH0_CLAUDE_CODE_CLIENT_ID",
-    ]) vi.stubEnv(setting, undefined);
+  if (only) {
+    for (const setting of Object.keys(clientSettings)) {
+      if (setting !== only) vi.stubEnv(setting, undefined);
+    }
     // Load a fresh route because the authorization module caches its configuration on first use.
     vi.resetModules();
     handlePost = (await import("../../app/mcp/route")).POST;

@@ -14,6 +14,7 @@ const metadataUrl = "https://garmin.example.test/.well-known/oauth-protected-res
 const claudeClient = "claude-fixture";
 const claudeCodeClient = "claude-code-fixture";
 const geminiClient = "gemini-fixture";
+const openCodeClient = "opencode-fixture";
 const env = {
   MCP_RESOURCE_URL: resource,
   AUTH0_ISSUER: issuer,
@@ -153,22 +154,27 @@ describe("MCP authorization", () => {
     if (suppliedOrigin) expect(fetch).not.toHaveBeenCalled();
   });
 
-  it.each([
-    { name: "Gemini unset", configuredId: undefined, overrides: {}, status: 403 },
-    { name: "Gemini empty", configuredId: "", overrides: {}, status: 403 },
-    { name: "wrong issuer", configuredId: geminiClient, overrides: { iss: "https://other.example.test/" }, status: 401 },
-    { name: "wrong audience", configuredId: geminiClient, overrides: { aud: `${resource}/` }, status: 401 },
-    { name: "wrong owner", configuredId: geminiClient, overrides: { sub: "auth0|fixture-other" }, status: 403 },
-    { name: "missing scope", configuredId: geminiClient, overrides: { scope: undefined }, status: 403 },
-    { name: "browser client", configuredId: geminiClient, overrides: { azp: env.AUTH0_BROWSER_CLIENT_ID }, status: 403 },
-  ])("never dispatches in the Gemini OAuth flow with $name", async ({ configuredId, overrides, status }) => {
-    const { authorize } = fixtureGate({ ...env, AUTH0_GEMINI_CLIENT_ID: configuredId });
-    const bearer = await token({ azp: geminiClient, ...overrides });
+  describe.each([
+    { clientId: geminiClient, setting: "AUTH0_GEMINI_CLIENT_ID" },
+    { clientId: openCodeClient, setting: "AUTH0_OPENCODE_CLIENT_ID" },
+  ])("OAuth with $setting", ({ clientId, setting }) => {
+    it.each([
+      { name: "client unset", configuredId: undefined, overrides: {}, status: 403 },
+      { name: "client empty", configuredId: "", overrides: {}, status: 403 },
+      { name: "wrong issuer", configuredId: clientId, overrides: { iss: "https://other.example.test/" }, status: 401 },
+      { name: "wrong audience", configuredId: clientId, overrides: { aud: `${resource}/` }, status: 401 },
+      { name: "wrong owner", configuredId: clientId, overrides: { sub: "auth0|fixture-other" }, status: 403 },
+      { name: "missing scope", configuredId: clientId, overrides: { scope: undefined }, status: 403 },
+      { name: "browser client", configuredId: clientId, overrides: { azp: env.AUTH0_BROWSER_CLIENT_ID }, status: 403 },
+    ])("never dispatches with $name", async ({ configuredId, overrides, status }) => {
+      const { authorize } = fixtureGate({ ...env, [setting]: configuredId });
+      const bearer = await token({ azp: clientId, ...overrides });
 
-    for (const method of rpcMethods) {
-      expect((await authorize(request(method, bearer), dispatch)).status).toBe(status);
-    }
-    expect(dispatch).not.toHaveBeenCalled();
+      for (const method of rpcMethods) {
+        expect((await authorize(request(method, bearer), dispatch)).status).toBe(status);
+      }
+      expect(dispatch).not.toHaveBeenCalled();
+    });
   });
 
   it("fails closed if the pinned key endpoint is unavailable", async () => {
@@ -233,6 +239,9 @@ describe("MCP authorization configuration", () => {
     { AUTH0_GEMINI_CLIENT_ID: env.AUTH0_CHATGPT_CLIENT_ID },
     { AUTH0_GEMINI_CLIENT_ID: env.AUTH0_BROWSER_CLIENT_ID },
     { AUTH0_GEMINI_CLIENT_ID: "client with spaces" },
+    { AUTH0_OPENCODE_CLIENT_ID: env.AUTH0_CHATGPT_CLIENT_ID },
+    { AUTH0_OPENCODE_CLIENT_ID: env.AUTH0_BROWSER_CLIENT_ID },
+    { AUTH0_OPENCODE_CLIENT_ID: "client with spaces" },
     { AUTH0_CHATGPT_CLIENT_ID: "", AUTH0_CODEX_CLIENT_ID: undefined },
     { AUTH0_OWNER_SUBJECT: "fixture-machine@clients" },
     { MCP_TRUSTED_ORIGINS: "*" },

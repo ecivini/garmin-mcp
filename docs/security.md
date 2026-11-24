@@ -12,6 +12,7 @@ Publish `GET /.well-known/oauth-protected-resource/mcp` with the canonical MCP U
 | Codex CLI | Register a public native application with PKCE. Add it with `codex mcp add garmin --url https://garmin.example.com/mcp --oauth-client-id <id>`. Register the exact callback displayed by Codex, including its callback ID if present. If the provider requires a fixed port, align the registered URI, configured callback URL and listener port. Use `codex mcp login garmin` to sign in again. |
 | Claude custom connector | Use a pre-registered public client with PKCE and the exact `https://claude.ai/api/mcp/auth_callback` callback. |
 | Claude Code direct connection | Use a separate public native app with PKCE and the fixed loopback callback described in the [setup guide](setup.md#direct-connection-in-claude-code). |
+| OpenCode V2 | Use a separate public native app with S256 PKCE and token endpoint authentication `None`. Register `http://127.0.0.1:19876/callback` and match the redirect URI and listener port in [OpenCode configuration](setup.md#8-connect-opencode-v2). |
 | Browser downloads | Register a separate confidential web application for the server's same-origin login callback. Enable only the owner connection. Its ID token establishes the browser session after the server verifies the OIDC callback. |
 
 Keep public sign-ups disabled on the Auth0 database connection. Manually provision the owner's account and enable only that connection for the registered applications. Keep an explicit server-side allowlist of issuer and subject pairs controlled by the Garmin account owner. Start with one pair. Use stable Auth0 subject IDs and keep email addresses out of authorization decisions. Any test user with a valid tenant login must remain outside the allowlist. [Auth0 Disable Sign Ups](https://support.auth0.com/center/s/article/Disable-Signups-at-Connection-Level) · [Claude OAuth requirements](https://claude.com/docs/connectors/building/authentication)
@@ -26,6 +27,7 @@ Configure these server-side environment variables for MCP authorization and disc
 | `AUTH0_CODEX_CLIENT_ID` | Separate pre-registered Codex CLI application client ID. |
 | `AUTH0_CLAUDE_CLIENT_ID` | Pre-registered Claude application client ID. |
 | `AUTH0_CLAUDE_CODE_CLIENT_ID` | Separate pre-registered Claude Code application client ID. |
+| `AUTH0_OPENCODE_CLIENT_ID` | Separate pre-registered OpenCode V2 application client ID. |
 | `AUTH0_OWNER_SUBJECT` | Stable Auth0 `sub` of the owner under the configured issuer. |
 | `MCP_TRUSTED_ORIGINS` | Optional comma-separated HTTPS origins, using scheme and host with an optional port. An empty value permits only origin-less requests. |
 

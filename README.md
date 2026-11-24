@@ -1,6 +1,6 @@
 # Garmin Personal MCP
 
-Make sense of your Garmin Connect data in Claude, Claude Code, ChatGPT, or Codex CLI. Ask for a weekly view of your health and training, explore a specific activity, or turn your observations into Markdown notes for your second brain.
+Make sense of your Garmin Connect data in Claude, Claude Code, ChatGPT, Codex CLI, or OpenCode V2. Ask for a weekly view of your health and training, explore a specific activity, or turn your observations into Markdown notes for your second brain.
 
 Garmin Personal MCP is a read-only [Model Context Protocol](https://modelcontextprotocol.io/) server for one Garmin account. It uses Garmin's official Personal API to fetch data on demand. The 29 tools cover activities and workouts, sleep, heart rate and HRV, stress, Body Battery, steps, SpO₂, hydration, nutrition, weight, and menstrual-cycle tracking. The catalog also includes FIT activity summaries and original ZIP downloads. [Tool catalog](docs/tool-catalog.md)
 

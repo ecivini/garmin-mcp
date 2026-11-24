@@ -1,6 +1,6 @@
 # Set up Garmin Personal MCP
 
-This guide connects a single Garmin account to Claude, Claude Code, ChatGPT, Codex CLI, or Gemini through an Auth0-protected Next.js deployment on Vercel. You need a Vercel project for this repository, an Auth0 tenant, and at least one supported MCP client. For hosted Claude, your account or workspace must allow custom connectors. For ChatGPT, your workspace must allow custom MCP servers with your own OAuth client credentials. Use Node.js 22.12 or later in the 22.x series for local checks.
+This guide connects a single Garmin account to Claude, Claude Code, ChatGPT, Codex CLI, Gemini, or OpenCode V2 through an Auth0-protected Next.js deployment on Vercel. You need a Vercel project for this repository, an Auth0 tenant, and at least one supported MCP client. For hosted Claude, your account or workspace must allow custom connectors. For ChatGPT, your workspace must allow custom MCP servers with your own OAuth client credentials. Use Node.js 22.12 or later in the 22.x series for local checks.
 
 Replace `garmin.example.com` with your stable Vercel production hostname and `YOUR_AUTH0_DOMAIN` with your Auth0 tenant domain wherever they appear.
 
@@ -22,6 +22,7 @@ Replace `garmin.example.com` with your stable Vercel production hostname and `YO
    | **Garmin Claude** | **Native**, Authorization Code with S256 PKCE, token endpoint authentication **None**. | `https://claude.ai/api/mcp/auth_callback` |
    | **Garmin Claude Code** | **Native**, Authorization Code with S256 PKCE, token endpoint authentication **None**. | `http://localhost:36878/callback` |
    | **Garmin Gemini** | **Regular Web Application**, Authorization Code with S256 PKCE, token endpoint authentication `client_secret_post`. | Copy the exact Google HTTPS redirect URI observed in step 7. |
+   | **Garmin OpenCode** | **Native**, Authorization Code with S256 PKCE, token endpoint authentication **None**. | `http://127.0.0.1:19876/callback` |
    | **Garmin Browser Downloads** | **Regular Web Application**, Authorization Code with PKCE, token endpoint authentication `client_secret_post`. | `https://garmin.example.com/downloads/activity/callback` |
 
 3. Open each application's **Connections** tab and enable only the database connection that contains the owner. You can also enable the app from **Authentication → Database → your connection → Applications**. [Auth0 connection settings](https://support.auth0.com/center/s/article/Error-Connection-must-be-enabled-for-this-client-to-perform-single-user-creation-and-signup-operations)
@@ -48,11 +49,12 @@ Replace `garmin.example.com` with your stable Vercel production hostname and `YO
    | `AUTH0_CLAUDE_CLIENT_ID` | Client ID of **Garmin Claude**. |
    | `AUTH0_CLAUDE_CODE_CLIENT_ID` | Client ID of **Garmin Claude Code**. |
    | `AUTH0_GEMINI_CLIENT_ID` | Optional client ID of **Garmin Gemini**. |
+   | `AUTH0_OPENCODE_CLIENT_ID` | Optional client ID of **Garmin OpenCode**. |
    | `AUTH0_BROWSER_CLIENT_ID` | Client ID of **Garmin Browser Downloads**. |
    | `AUTH0_BROWSER_CLIENT_SECRET` | Client secret of **Garmin Browser Downloads**. |
    | `DOWNLOAD_TICKET_KEY` | Unpadded base64url key generated for tickets. |
    | `DOWNLOAD_COOKIE_KEY` | The separate unpadded base64url key generated for cookies. |
-   | `GARMIN_PERSONAL_API_KEY` | Add when you are ready for live Garmin reads in step 8. |
+   | `GARMIN_PERSONAL_API_KEY` | Add when you are ready for live Garmin reads in step 9. |
    | `MCP_TRUSTED_ORIGINS` | Optional comma-separated list of exact HTTPS origins. Leave empty for clients that send no `Origin` header. |
 
 4. Deploy the branch or commit that contains the full catalog to the production hostname. Vercel applies updated environment variables on a new deployment. If a push creates a Preview at another hostname, the existing MCP connections still reach the production URL. [Vercel environment variables](https://vercel.com/docs/environment-variables)
@@ -131,7 +133,33 @@ Google currently offers custom apps in English to adults in the US who use a per
 4. After linking, select the app with `@` in Gemini web or in the mobile app signed in to the same Google Account. [Google's custom app setup](https://support.google.com/gemini/answer/17209137?hl=en-45#connect_a_custom_app)
 5. If the access token expires and Gemini asks you to reconnect, return to **Connected Apps** in Gemini web and re-link the app as the owner. [Google's account linking guide](https://developers.google.com/connected-apps/mcp/oauth)
 
-## 8. Enable live Garmin reads and verify a download
+## 8. Connect OpenCode V2
+
+1. Check that `opencode --version` reports V2. In Auth0, use the dedicated **Garmin OpenCode** app from step 2 with the owner's connection and **User-Delegated Access** to `garmin:read`. Set its public Client ID as `AUTH0_OPENCODE_CLIENT_ID` and redeploy as described in step 3. [OpenCode V2 migration guide](https://opencode.ai/docs/migrate-v1/)
+2. Merge the `garmin` entry into `mcp.servers` in your project's `opencode.jsonc` or your global `~/.config/opencode/opencode.jsonc`. Replace the URL and Client ID with your own. If port 19876 is in use, use an available port in both OAuth fields and in Auth0's **Allowed Callback URLs**. [OpenCode pre-registered OAuth clients](https://opencode.ai/docs/mcp-servers/#pre-registered-clients)
+
+   ```json
+   {
+     "mcp": {
+       "servers": {
+         "garmin": {
+           "type": "remote",
+           "url": "https://garmin.example.com/mcp",
+           "oauth": {
+             "client_id": "YOUR_OPENCODE_CLIENT_ID",
+             "scope": "garmin:read",
+             "callback_port": 19876,
+             "redirect_uri": "http://127.0.0.1:19876/callback"
+           }
+         }
+       }
+     }
+   }
+   ```
+
+3. Run `opencode mcp auth garmin` and sign in as the owner in your browser. Run `opencode mcp list` and confirm that `garmin` is connected. You can also manage the connection with `/mcps` in OpenCode. After you enable live reads in step 9, ask OpenCode to call `list_activity_types` and show the result. [OpenCode MCP commands](https://opencode.ai/docs/cli/commands/#mcp)
+
+## 9. Enable live Garmin reads and verify a download
 
 1. Verify the hosted browser flow with a synthetic ZIP before enabling live reads. Use the fixture deployment described in the [release checklist](release-checks.md#deployment-checks). On the full deployment, discovery and issuing a download link can work before the Garmin key is set. Live reads and ZIP delivery need the key.
 2. Review the terms shown during Personal API key creation and the FIT SDK license for your intended hosting and use. Generate a Personal API key in Garmin Connect, add it to Vercel as `GARMIN_PERSONAL_API_KEY`, and redeploy. Keep the key in Vercel's server-side settings. [Garmin Personal API key setup](https://developer.garmin.com/gc-developer-program/personal/personal-faq) · [FIT SDK license](https://github.com/garmin/fit-javascript-sdk/blob/main/LICENSE.txt)
