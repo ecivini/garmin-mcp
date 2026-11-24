@@ -57,9 +57,10 @@ Record missing readings and add context such as travel, changes in routine, or h
 
 ## Get started
 
-1. Choose a stable HTTPS hostname and configure an Auth0 API with one OAuth app per MCP client you want to use. Register a separate app for browser downloads.
-2. Set the server environment on Vercel, deploy the Next.js app, and connect your chosen clients to the same HTTPS `/mcp` endpoint.
-3. Call `list_activity_types` from each client to check the connection. For ZIP delivery, call `download_activity` and open the short-lived link in your browser.
+1. Fork this repository to your GitHub account. Use your fork for the setup and deployment steps below.
+2. Choose a stable HTTPS hostname and configure an Auth0 API with one OAuth app per MCP client you want to use. Register a separate app for browser downloads.
+3. Set the server environment on Vercel, deploy the Next.js app, and connect your chosen clients to the same HTTPS `/mcp` endpoint.
+4. Call `list_activity_types` from each client to check the connection. For ZIP delivery, call `download_activity` and open the short-lived link in your browser.
 
 Follow the [step-by-step setup guide](docs/setup.md) for the exact settings, callbacks, and commands.
 
