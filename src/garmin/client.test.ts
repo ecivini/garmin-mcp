@@ -111,36 +111,115 @@ it.each([400, 401, 403])("sanitizes a credential rejection at exchange status %s
   await expect(read(client)).resolves.toEqual(fixture);
 });
 
-it.each([
-  ["3", 3, 3],
-  ["Wed, 01 Jan 2025 00:00:12 GMT", 12, 5],
-  ["bad", undefined, 5],
-  [null, undefined, 5],
-] as const)("reports Retry-After %s and enforces a bounded cooldown", async (header, retryAfterSeconds, cooldown) => {
+function throttled(header: string | null) {
+  const headers = header === null ? undefined : { "Retry-After": header };
+  return new Response(null, { status: 429, headers });
+}
+
+it.each(["12", "Wed, 01 Jan 2025 00:00:12 GMT"])("honors the full Retry-After %s across reads", async (header) => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
-  const headers = header === null ? undefined : { "Retry-After": header };
   const fetch = vi.fn<typeof globalThis.fetch>()
     .mockResolvedValueOnce(new Response(token()))
-    .mockResolvedValueOnce(new Response(null, { status: 429, headers }))
+    .mockResolvedValueOnce(throttled(header))
     .mockResolvedValueOnce(Response.json(fixture));
   const client = clientWith(fetch);
-  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited", retryAfterSeconds });
-  await vi.advanceTimersByTimeAsync(cooldown * 1000 - 1);
-  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited" });
+  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited", retryAfterSeconds: 12 });
+
+  await vi.advanceTimersByTimeAsync(5_000);
+  await expect(client.readActivityArchive("1", context(), 8)).rejects.toMatchObject({
+    code: "rate_limited", retryAfterSeconds: 7,
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(6_999);
+  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited", retryAfterSeconds: 1 });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1);
+  await expect(read(client)).resolves.toEqual(fixture);
+  expect(fetch).toHaveBeenCalledTimes(3);
+});
+
+it.each(["bad", null])("uses a five-second fallback for Retry-After %s", async (header) => {
+  vi.useFakeTimers();
+  const fetch = vi.fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(new Response(token()))
+    .mockResolvedValueOnce(throttled(header))
+    .mockResolvedValueOnce(Response.json(fixture));
+  const client = clientWith(fetch);
+  const error = { code: "rate_limited", retryAfterSeconds: undefined };
+  await expect(read(client)).rejects.toMatchObject(error);
+  await vi.advanceTimersByTimeAsync(4_999);
+  await expect(read(client)).rejects.toMatchObject(error);
   expect(fetch).toHaveBeenCalledTimes(2);
   await vi.advanceTimersByTimeAsync(1);
   await expect(read(client)).resolves.toEqual(fixture);
 });
 
-it("applies 429 cooldown to the credential exchange and never automatically retries it", async () => {
-  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-    new Response(null, { status: 429, headers: { "Retry-After": "10" } }),
-  );
+it.each(["0", "Tue, 31 Dec 2024 23:59:59 GMT"])("allows an immediate read after Retry-After %s", async (header) => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2025-01-01T00:00:00.000Z"));
+  const fetch = vi.fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(new Response(token()))
+    .mockResolvedValueOnce(throttled(header))
+    .mockResolvedValueOnce(Response.json(fixture));
+  const client = clientWith(fetch);
+  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited", retryAfterSeconds: 0 });
+  await expect(read(client)).resolves.toEqual(fixture);
+});
+
+it.each([
+  ["12", "3", 11],
+  ["3", "12", 12],
+  ["6", null, 5],
+  [null, "4", 4],
+  ["3", null, undefined],
+] as const)("keeps the latest deadline and explicit guidance for overlapping 429s (%s then %s)", async (
+  firstHeader, secondHeader, remaining,
+) => {
+  vi.useFakeTimers();
+  const delayed = Promise.withResolvers<Response>();
+  const dispatched = Promise.withResolvers<void>();
+  const fetch = vi.fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(new Response(token()))
+    .mockImplementationOnce(() => {
+      dispatched.resolve();
+      return delayed.promise;
+    })
+    .mockResolvedValueOnce(throttled(firstHeader))
+    .mockResolvedValueOnce(Response.json(fixture));
+  const client = clientWith(fetch);
+  const pending = read(client);
+  await dispatched.promise;
+  await expect(read(client)).rejects.toMatchObject({
+    code: "rate_limited", retryAfterSeconds: firstHeader === null ? undefined : Number(firstHeader),
+  });
+  await vi.advanceTimersByTimeAsync(1_000);
+  delayed.resolve(throttled(secondHeader));
+  await expect(pending).rejects.toMatchObject({
+    code: "rate_limited", retryAfterSeconds: secondHeader === null ? undefined : Number(secondHeader),
+  });
+  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited", retryAfterSeconds: remaining });
+  await vi.advanceTimersByTimeAsync((remaining ?? 5) * 1000 - 1);
+  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited" });
+  expect(fetch).toHaveBeenCalledTimes(3);
+  await vi.advanceTimersByTimeAsync(1);
+  await expect(read(client)).resolves.toEqual(fixture);
+});
+
+it("honors the full credential exchange cooldown before the next exchange", async () => {
+  vi.useFakeTimers();
+  const fetch = vi.fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(throttled("10"))
+    .mockResolvedValueOnce(new Response(token()))
+    .mockResolvedValueOnce(Response.json(fixture));
   const client = clientWith(fetch);
   await expect(read(client)).rejects.toMatchObject({ code: "rate_limited", retryAfterSeconds: 10 });
-  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited" });
+  await vi.advanceTimersByTimeAsync(6_000);
+  await expect(read(client)).rejects.toMatchObject({ code: "rate_limited", retryAfterSeconds: 4 });
   expect(fetch).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(4_000);
+  await expect(read(client)).resolves.toEqual(fixture);
+  expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([base + exchangePath, base + exchangePath, base + jsonPath]);
 });
 
 it("lets an active caller finish when another caller cancels their shared exchange", async () => {

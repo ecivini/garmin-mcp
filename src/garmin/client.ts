@@ -39,7 +39,7 @@ const idleTimeoutMs = 10_000;
 const exchangeTimeoutMs = 15_000;
 const renewalMarginMs = 60_000;
 const maxTokenAgeMs = 24 * 60 * 60 * 1000;
-const maxCooldownMs = 5_000;
+const fallbackCooldownSeconds = 5;
 
 const messages = {
   invalid_input: "The supplied arguments are invalid.",
@@ -252,13 +252,13 @@ export function createGarminClient({
   let cachedToken: Token | undefined;
   let pendingExchange: Exchange | undefined;
   let nextAllowedAt = 0;
-  let retryAt: number | undefined;
+  let hasRetryAfter = false;
 
   async function request(path: string, scope: Scope, init: RequestInit): Promise<Response> {
     scope.signal.throwIfAborted();
     const now = Date.now();
     if (now < nextAllowedAt) {
-      const remaining = retryAt === undefined ? undefined : Math.max(0, Math.ceil((retryAt - now) / 1000));
+      const remaining = hasRetryAfter ? Math.ceil((nextAllowedAt - now) / 1000) : undefined;
       throw new GarminError("rate_limited", remaining);
     }
     const timer = setTimeout(() => scope.abort(new GarminError("timeout")), headerTimeoutMs);
@@ -273,10 +273,10 @@ export function createGarminClient({
       if (response.status === 429) {
         const received = Date.now();
         const seconds = retryDelay(response.headers.get("Retry-After"), received);
-        const allowedAt = received + Math.min(maxCooldownMs, seconds === undefined ? maxCooldownMs : seconds * 1000);
-        if (allowedAt >= nextAllowedAt) {
+        const allowedAt = received + (seconds ?? fallbackCooldownSeconds) * 1000;
+        if (allowedAt > nextAllowedAt || (allowedAt === nextAllowedAt && seconds !== undefined)) {
           nextAllowedAt = allowedAt;
-          retryAt = seconds === undefined ? undefined : received + seconds * 1000;
+          hasRetryAfter = seconds !== undefined;
         }
         discard(response.body);
         throw new GarminError("rate_limited", seconds);
