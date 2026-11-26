@@ -1,0 +1,6 @@
+{
+  "name": "garmin-mcp",
+  "version": "0.1.0",
+  "description": "Analyze your Garmin Connect data using Garmin Personal MCP.",
+  "author": { "name": "ecivini" }
+}

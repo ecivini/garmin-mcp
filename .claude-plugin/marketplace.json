@@ -1,0 +1,12 @@
+{
+  "name": "ecivini-garmin",
+  "owner": { "name": "ecivini" },
+  "metadata": { "description": "Skills for Garmin Personal MCP." },
+  "plugins": [
+    {
+      "name": "garmin-mcp",
+      "source": "./",
+      "description": "Analyze your Garmin Connect data using Garmin Personal MCP."
+    }
+  ]
+}

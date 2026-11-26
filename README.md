@@ -64,6 +64,40 @@ Record missing readings and add context such as travel, changes in routine, or h
 
 Follow the [step-by-step setup guide](docs/setup.md) for the exact settings, callbacks, and commands.
 
+## Install the Garmin MCP skill
+
+The [Garmin MCP skill](skills/garmin-mcp/SKILL.md) teaches your agent how to find the right tools, compare readings, and inspect activities. Connect and sign in to Garmin MCP in your client using the [setup guide](docs/setup.md). The Gemini CLI skill install assumes you already have a working MCP connection there.
+
+### Claude marketplace
+
+In Claude Code, run these commands once the marketplace files are available in the GitHub repository:
+
+```sh
+claude plugin marketplace add ecivini/garmin-mcp
+claude plugin install garmin-mcp@ecivini-garmin
+```
+
+From a local checkout, use `claude plugin marketplace add "$PWD"` for the first command. In a new Claude Code session, you can invoke `/garmin-mcp:garmin-mcp`.
+
+In Claude web or Desktop, open **Customize → Plugins → Add → Add marketplace** if available. Choose **Add from a repository**, enter `ecivini/garmin-mcp`, and install **garmin-mcp**. Claude must be able to access the repository. You can also run `zip -r garmin-mcp-skill.zip garmin-mcp` from the checkout’s `skills/` directory and upload the ZIP under **Customize → Skills → Upload a skill**. [Claude marketplace setup](https://support.claude.com/en/articles/13837440-use-plugins-in-claude) · [Claude skill upload](https://support.claude.com/en/articles/12512180-use-skills-in-claude)
+
+### Standalone installation
+
+Install the skill for Codex across all your projects with the [Skills CLI](https://github.com/vercel-labs/skills#install-a-skill):
+
+```sh
+npx skills add ecivini/garmin-mcp --skill garmin-mcp --agent codex --global
+```
+
+For another CLI, replace `codex` with `claude-code`, `opencode`, or `gemini-cli`. Repeat `--agent` to install for multiple clients. Omit `--global` to install in the current project, as in this example:
+
+```sh
+npx skills add ecivini/garmin-mcp --skill garmin-mcp \
+  --agent claude-code --agent codex --agent opencode --agent gemini-cli
+```
+
+To install from a checkout, run the same command from its root with `./skills/garmin-mcp` in place of `ecivini/garmin-mcp`. For Gemini Apps, open **Customize → Skills → Create → Upload** in Gemini web and select the [SKILL.md file](skills/garmin-mcp/SKILL.md). [Gemini Apps skill upload](https://support.google.com/gemini/answer/17094296?hl=en)
+
 ## How your data is handled
 
 Each request is authorized for the configured owner before tools can read Garmin. The server fetches records on demand and keeps no persistent copy. The Garmin key stays server-side. Your chosen MCP client receives the structured tool results you request. Original activity ZIPs are delivered through a separately authenticated browser session. [Security and data handling](docs/security.md)
